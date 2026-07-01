@@ -163,12 +163,29 @@
     z-index:40;
   }
   #resultOverlay.show{display:flex;}
-  #resultOverlay video{
-    display:block;
+  #resultVideoWrap{
+    position:relative;
     flex:1;min-height:0;
     width:100%;
     background:#000;
+    overflow:hidden;
+  }
+  #resultVideoWrap video{
+    display:block;
+    width:100%;height:100%;
     object-fit:contain;
+    touch-action:none;
+  }
+  #playPauseHint{
+    position:absolute;
+    top:12px;right:12px;
+    width:34px;height:34px;
+    border-radius:50%;
+    background:rgba(0,0,0,.5);
+    color:var(--paper);
+    display:flex;align-items:center;justify-content:center;
+    font-size:14px;
+    pointer-events:none;
   }
   #resultBar{
     padding:14px 18px calc(18px + env(safe-area-inset-bottom));
@@ -313,7 +330,10 @@
 </div>
 
 <div id="resultOverlay">
-  <video id="resultVideo" controls playsinline></video>
+  <div id="resultVideoWrap">
+    <video id="resultVideo" playsinline></video>
+    <div id="playPauseHint">&#9654;</div>
+  </div>
   <div id="frameStepBar">
     <button id="prevFrameBtn" class="frameBtn">&#9664;&#9664; Frame</button>
     <button id="nextFrameBtn" class="frameBtn">Frame &#9654;&#9654;</button>
@@ -352,6 +372,8 @@
 
   const resultOverlay = document.getElementById('resultOverlay');
   const resultVideo = document.getElementById('resultVideo');
+  const resultVideoWrap = document.getElementById('resultVideoWrap');
+  const playPauseHint = document.getElementById('playPauseHint');
   const prevFrameBtn = document.getElementById('prevFrameBtn');
   const nextFrameBtn = document.getElementById('nextFrameBtn');
   const shareBtn = document.getElementById('shareBtn');
@@ -875,6 +897,59 @@
   }
   prevFrameBtn.addEventListener('click', () => stepResultFrame(-1));
   nextFrameBtn.addEventListener('click', () => stepResultFrame(1));
+
+  // Drag left/right anywhere on the video to scrub, and a plain tap
+  // toggles play/pause — replacing the native controls bar, which sat
+  // right over the burned-in clock.
+  const DRAG_SECONDS_PER_PIXEL = 0.012; // ~12ms of video per pixel dragged
+  const TAP_MOVE_THRESHOLD = 6; // px — under this, treat it as a tap, not a drag
+  let scrubStartX = 0;
+  let scrubStartTime = 0;
+  let scrubMoved = false;
+
+  function scrubDragStart(clientX) {
+    scrubStartX = clientX;
+    scrubStartTime = resultVideo.currentTime;
+    scrubMoved = false;
+  }
+  function scrubDragMove(clientX) {
+    if (!isFinite(resultVideo.duration)) return;
+    const dx = clientX - scrubStartX;
+    if (Math.abs(dx) > TAP_MOVE_THRESHOLD) scrubMoved = true;
+    if (!scrubMoved) return;
+    resultVideo.pause();
+    const t = scrubStartTime + dx * DRAG_SECONDS_PER_PIXEL;
+    resultVideo.currentTime = Math.max(0, Math.min(resultVideo.duration, t));
+  }
+  function scrubDragEnd() {
+    if (!scrubMoved) {
+      if (resultVideo.paused) resultVideo.play().catch(() => {});
+      else resultVideo.pause();
+    }
+  }
+
+  resultVideoWrap.addEventListener('touchstart', e => {
+    scrubDragStart(e.touches[0].clientX);
+  }, { passive: true });
+  resultVideoWrap.addEventListener('touchmove', e => {
+    scrubDragMove(e.touches[0].clientX);
+  }, { passive: true });
+  resultVideoWrap.addEventListener('touchend', scrubDragEnd);
+
+  let mouseScrubbing = false;
+  resultVideoWrap.addEventListener('mousedown', e => {
+    mouseScrubbing = true;
+    scrubDragStart(e.clientX);
+  });
+  window.addEventListener('mousemove', e => {
+    if (mouseScrubbing) scrubDragMove(e.clientX);
+  });
+  window.addEventListener('mouseup', () => {
+    if (mouseScrubbing) { scrubDragEnd(); mouseScrubbing = false; }
+  });
+
+  resultVideo.addEventListener('play', () => { playPauseHint.innerHTML = '&#10074;&#10074;'; });
+  resultVideo.addEventListener('pause', () => { playPauseHint.innerHTML = '&#9654;'; });
 
   function makeVideoFile() {
     const blob = window.__lastBlob;
