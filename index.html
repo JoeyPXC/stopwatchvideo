@@ -355,6 +355,7 @@
   let clockElapsedMs = 0;
   let clockStartPerf = 0;
   let lastLapMarkMs = 0; // total-clock time (ms) at which the current lap started
+  let lapUsed = false;   // true only once the Lap button has actually been pressed
 
   let recorder = null;
   let recordingState = 'idle'; // idle | recording | paused
@@ -510,10 +511,12 @@
     if (clockRunning) return;
     clockElapsedMs = 0;
     lastLapMarkMs = 0;
+    lapUsed = false;
   });
 
   lapBtn.addEventListener('click', () => {
     lastLapMarkMs = currentClockMs();
+    lapUsed = true;
   });
 
   // ---------- Draw loop (burns the clock into the canvas every frame) ----------
@@ -644,10 +647,9 @@
       formatClock(currentClockMs()), x, canvas.height - bottomMargin, totalFontSize, totalColor
     );
 
-    // Only show the lap pill once a lap has actually been used this session
-    // (checkpoint moved off zero, or clock is running) — keeps a simple
-    // single-clock look for anyone who never touches the Lap button.
-    if (lastLapMarkMs > 0 || clockRunning) {
+    // Only show the lap pill once the Lap button has actually been pressed —
+    // otherwise stay a single clean total-time display, no clutter.
+    if (lapUsed) {
       drawTimePill(
         formatClock(currentLapMs()), x, totalTop - pillGap, lapFontSize, '#f4f1ea'
       );
