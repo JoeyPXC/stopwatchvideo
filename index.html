@@ -242,6 +242,28 @@
   }
   #zoomIndicator.show{opacity:1;}
 
+  #skipBar{
+    position:fixed;
+    top:calc(60px + env(safe-area-inset-top));
+    right:12px;
+    display:none;
+    flex-direction:column;
+    gap:8px;
+    z-index:20;
+  }
+  #skipBar.show{display:flex;}
+  .skipBtn{
+    font-family:var(--mono);
+    font-size:12px;letter-spacing:.03em;
+    background:rgba(0,0,0,.5);
+    color:var(--paper);
+    border:1px solid rgba(244,241,234,.35);
+    border-radius:20px;
+    padding:8px 14px;
+    cursor:pointer;
+  }
+  .skipBtn:active{background:var(--track-red);border-color:var(--track-red);}
+
   #installBtn{
     position:fixed;
     top:calc(10px + env(safe-area-inset-top));
@@ -273,6 +295,11 @@
 <div id="stage">
   <video id="video" playsinline muted autoplay></video>
   <canvas id="canvas"></canvas>
+</div>
+
+<div id="skipBar">
+  <button id="skip10Btn" class="skipBtn">+10s</button>
+  <button id="skip30Btn" class="skipBtn">+30s</button>
 </div>
 
 <button id="installBtn">Install app</button>
@@ -332,6 +359,9 @@
   const permBtn = document.getElementById('permBtn');
   const useFileBtn = document.getElementById('useFileBtn');
   const videoFileInput = document.getElementById('videoFileInput');
+  const skipBar = document.getElementById('skipBar');
+  const skip10Btn = document.getElementById('skip10Btn');
+  const skip30Btn = document.getElementById('skip30Btn');
   const permError = document.getElementById('permError');
 
   const flipBtn = document.getElementById('flipBtn');
@@ -526,12 +556,21 @@
       video.classList.add('source-visible');
       video.controls = true;
       canvas.style.display = 'none';
+      skipBar.classList.add('show');
     } else {
       video.classList.remove('source-visible');
       video.controls = false;
       canvas.style.display = '';
+      skipBar.classList.remove('show');
     }
   }
+
+  function skipVideo(seconds) {
+    if (!video.duration) return;
+    video.currentTime = Math.min(video.duration, Math.max(0, video.currentTime + seconds));
+  }
+  skip10Btn.addEventListener('click', () => skipVideo(10));
+  skip30Btn.addEventListener('click', () => skipVideo(30));
 
   // Re-request the camera stream when the phone rotates, so landscape and
   // portrait each capture (and fill) their own native screen aspect ratio.
