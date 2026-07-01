@@ -176,17 +176,21 @@
     object-fit:contain;
     touch-action:none;
   }
-  #playPauseHint{
+  #bigPlayBtn{
     position:absolute;
-    top:12px;right:12px;
-    width:34px;height:34px;
+    top:50%;left:50%;
+    transform:translate(-50%,-50%);
+    width:76px;height:76px;
     border-radius:50%;
-    background:rgba(0,0,0,.5);
+    background:rgba(0,0,0,.55);
     color:var(--paper);
     display:flex;align-items:center;justify-content:center;
-    font-size:14px;
+    font-size:28px;
+    padding-left:6px;
     pointer-events:none;
+    transition:opacity .15s ease;
   }
+  #bigPlayBtn.hidden{opacity:0;}
   #resultBar{
     padding:14px 18px calc(18px + env(safe-area-inset-bottom));
     display:flex;gap:10px;flex-wrap:wrap;
@@ -219,29 +223,6 @@
     cursor:pointer;
   }
   .frameBtn:active{background:var(--track-red);border-color:var(--track-red);}
-
-  #orientDebug{
-    position:fixed;
-    top:calc(60px + env(safe-area-inset-top));
-    left:50%;
-    transform:translateX(-50%);
-    font-family:var(--mono);
-    font-size:11px;
-    background:rgba(0,0,0,.6);
-    color:var(--paper);
-    padding:6px 12px;
-    border-radius:14px;
-    z-index:30;
-    opacity:0;
-    pointer-events:none;
-    transition:opacity .2s ease;
-    max-width:90vw;
-    text-align:center;
-    white-space:nowrap;
-    overflow:hidden;
-    text-overflow:ellipsis;
-  }
-  #orientDebug.show{opacity:1;}
 
   #zoomIndicator{
     position:fixed;
@@ -310,11 +291,9 @@
   <div style="width:44px;"></div>
 </div>
 
-<div id="orientDebug"></div>
-
 <div id="zoomIndicator"></div>
 
-<div id="versionTag">v7</div>
+<div id="versionTag">v8</div>
 
 <div id="bottomBar">
   <div id="clockRow">
@@ -332,7 +311,7 @@
 <div id="resultOverlay">
   <div id="resultVideoWrap">
     <video id="resultVideo" playsinline></video>
-    <div id="playPauseHint">&#9654;</div>
+    <div id="bigPlayBtn">&#9654;</div>
   </div>
   <div id="frameStepBar">
     <button id="prevFrameBtn" class="frameBtn">&#9664;&#9664; Frame</button>
@@ -360,7 +339,6 @@
   const recBadge = document.getElementById('recBadge');
   const recDot = document.getElementById('recDot');
   const recLabel = document.getElementById('recLabel');
-  const orientDebug = document.getElementById('orientDebug');
   const zoomIndicator = document.getElementById('zoomIndicator');
 
   const clockBtn = document.getElementById('clockBtn');
@@ -373,7 +351,7 @@
   const resultOverlay = document.getElementById('resultOverlay');
   const resultVideo = document.getElementById('resultVideo');
   const resultVideoWrap = document.getElementById('resultVideoWrap');
-  const playPauseHint = document.getElementById('playPauseHint');
+  const bigPlayBtn = document.getElementById('bigPlayBtn');
   const prevFrameBtn = document.getElementById('prevFrameBtn');
   const nextFrameBtn = document.getElementById('nextFrameBtn');
   const shareBtn = document.getElementById('shareBtn');
@@ -720,13 +698,6 @@
     return '';
   }
 
-  function showOrientDebug(msg) {
-    orientDebug.textContent = msg;
-    orientDebug.classList.add('show');
-    clearTimeout(showOrientDebug._t);
-    showOrientDebug._t = setTimeout(() => orientDebug.classList.remove('show'), 4000);
-  }
-
   async function lockOrientationForRecording() {
     const type = window.innerWidth >= window.innerHeight ? 'landscape' : 'portrait';
 
@@ -742,18 +713,13 @@
       }
     }
 
-    if (!screen.orientation || !screen.orientation.lock) {
-      showOrientDebug('Orientation lock: not available on this browser');
-      return;
-    }
+    if (!screen.orientation || !screen.orientation.lock) return;
     try {
       await screen.orientation.lock(type);
-      showOrientDebug('Orientation locked (' + type + ')');
     } catch (e) {
       // Not supported/permitted on this device — the frame-lock in drawLoop()
       // still prevents the video itself from changing shape, just without
       // physically stopping the phone's screen from rotating underneath it.
-      showOrientDebug('Orientation lock failed: ' + (e.name || e.message || e));
     }
   }
 
@@ -948,8 +914,8 @@
     if (mouseScrubbing) { scrubDragEnd(); mouseScrubbing = false; }
   });
 
-  resultVideo.addEventListener('play', () => { playPauseHint.innerHTML = '&#10074;&#10074;'; });
-  resultVideo.addEventListener('pause', () => { playPauseHint.innerHTML = '&#9654;'; });
+  resultVideo.addEventListener('play', () => { bigPlayBtn.classList.add('hidden'); });
+  resultVideo.addEventListener('pause', () => { bigPlayBtn.classList.remove('hidden'); });
 
   function makeVideoFile() {
     const blob = window.__lastBlob;
