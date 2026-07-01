@@ -186,6 +186,23 @@
   #downloadBtn{background:var(--paper);color:var(--ink);}
   #discardBtn{background:transparent;color:#c9c4b8;border:1px solid #4a4640 !important;}
 
+  #frameStepBar{
+    padding:10px 18px;
+    display:flex;gap:10px;justify-content:center;
+    background:var(--ink);
+  }
+  .frameBtn{
+    font-family:var(--mono);
+    font-size:13px;letter-spacing:.03em;text-transform:uppercase;
+    background:transparent;
+    color:var(--paper);
+    border:1px solid rgba(244,241,234,.4);
+    border-radius:20px;
+    padding:10px 18px;
+    cursor:pointer;
+  }
+  .frameBtn:active{background:var(--track-red);border-color:var(--track-red);}
+
   #orientDebug{
     position:fixed;
     top:calc(60px + env(safe-area-inset-top));
@@ -297,6 +314,10 @@
 
 <div id="resultOverlay">
   <video id="resultVideo" controls playsinline></video>
+  <div id="frameStepBar">
+    <button id="prevFrameBtn" class="frameBtn">&#9664;&#9664; Frame</button>
+    <button id="nextFrameBtn" class="frameBtn">Frame &#9654;&#9654;</button>
+  </div>
   <div id="resultBar">
     <button id="shareBtn">Share</button>
     <button id="downloadBtn">Save to device</button>
@@ -331,6 +352,8 @@
 
   const resultOverlay = document.getElementById('resultOverlay');
   const resultVideo = document.getElementById('resultVideo');
+  const prevFrameBtn = document.getElementById('prevFrameBtn');
+  const nextFrameBtn = document.getElementById('nextFrameBtn');
   const shareBtn = document.getElementById('shareBtn');
   const downloadBtn = document.getElementById('downloadBtn');
   const discardBtn = document.getElementById('discardBtn');
@@ -837,6 +860,21 @@
   finishBtn.addEventListener('click', finishRecording);
 
   // ---------- Result screen actions ----------
+
+  // Steps the played-back result video roughly one frame at a time, so you
+  // can land precisely on the moment someone crosses and read the burned-in
+  // clock directly off that frame. This is an approximation (1/30s steps,
+  // matching our capture rate) rather than a guaranteed exact frame index —
+  // browsers don't expose true frame-stepping, only currentTime seeking.
+  const FRAME_STEP_SEC = 1 / 30;
+  function stepResultFrame(direction) {
+    if (!isFinite(resultVideo.duration)) return;
+    resultVideo.pause();
+    const t = resultVideo.currentTime + direction * FRAME_STEP_SEC;
+    resultVideo.currentTime = Math.max(0, Math.min(resultVideo.duration, t));
+  }
+  prevFrameBtn.addEventListener('click', () => stepResultFrame(-1));
+  nextFrameBtn.addEventListener('click', () => stepResultFrame(1));
 
   function makeVideoFile() {
     const blob = window.__lastBlob;
