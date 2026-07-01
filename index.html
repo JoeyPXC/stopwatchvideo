@@ -242,12 +242,64 @@
   }
   #zoomIndicator.show{opacity:1;}
 
+  #scrubBarWrap{
+    position:fixed;
+    top:calc(58px + env(safe-area-inset-top));
+    left:12px;right:12px;
+    display:none;
+    align-items:center;
+    gap:10px;
+    z-index:20;
+  }
+  #scrubBarWrap.show{display:flex;}
+  #scrubTimeLabel{
+    font-family:var(--mono);
+    font-size:11px;
+    color:var(--paper);
+    background:rgba(0,0,0,.5);
+    padding:5px 8px;
+    border-radius:10px;
+    white-space:nowrap;
+  }
+  #scrubRange{
+    flex:1;
+    -webkit-appearance:none;
+    appearance:none;
+    height:26px;
+    background:transparent;
+  }
+  #scrubRange::-webkit-slider-runnable-track{
+    height:4px;
+    background:rgba(244,241,234,.35);
+    border-radius:2px;
+  }
+  #scrubRange::-webkit-slider-thumb{
+    -webkit-appearance:none;
+    appearance:none;
+    width:18px;height:18px;
+    border-radius:50%;
+    background:var(--track-red);
+    border:2px solid var(--paper);
+    margin-top:-7px;
+  }
+  #scrubRange::-moz-range-track{
+    height:4px;
+    background:rgba(244,241,234,.35);
+    border-radius:2px;
+  }
+  #scrubRange::-moz-range-thumb{
+    width:18px;height:18px;
+    border-radius:50%;
+    background:var(--track-red);
+    border:2px solid var(--paper);
+  }
+
   #skipBar{
     position:fixed;
-    top:calc(60px + env(safe-area-inset-top));
-    right:12px;
+    top:calc(96px + env(safe-area-inset-top));
+    left:12px;right:12px;
     display:none;
-    flex-direction:column;
+    justify-content:center;
     gap:8px;
     z-index:20;
   }
@@ -259,7 +311,7 @@
     color:var(--paper);
     border:1px solid rgba(244,241,234,.35);
     border-radius:20px;
-    padding:8px 14px;
+    padding:8px 12px;
     cursor:pointer;
   }
   .skipBtn:active{background:var(--track-red);border-color:var(--track-red);}
@@ -297,7 +349,14 @@
   <canvas id="canvas"></canvas>
 </div>
 
+<div id="scrubBarWrap">
+  <span id="scrubTimeLabel">0:00 / 0:00</span>
+  <input type="range" id="scrubRange" min="0" max="1000" value="0">
+</div>
 <div id="skipBar">
+  <button id="restartBtn" class="skipBtn" title="Back to start">&#9198;</button>
+  <button id="skipBack30Btn" class="skipBtn">-30s</button>
+  <button id="skipBack10Btn" class="skipBtn">-10s</button>
   <button id="skip10Btn" class="skipBtn">+10s</button>
   <button id="skip30Btn" class="skipBtn">+30s</button>
 </div>
@@ -362,6 +421,12 @@
   const skipBar = document.getElementById('skipBar');
   const skip10Btn = document.getElementById('skip10Btn');
   const skip30Btn = document.getElementById('skip30Btn');
+  const skipBack10Btn = document.getElementById('skipBack10Btn');
+  const skipBack30Btn = document.getElementById('skipBack30Btn');
+  const restartBtn = document.getElementById('restartBtn');
+  const scrubBarWrap = document.getElementById('scrubBarWrap');
+  const scrubRange = document.getElementById('scrubRange');
+  const scrubTimeLabel = document.getElementById('scrubTimeLabel');
   const permError = document.getElementById('permError');
 
   const flipBtn = document.getElementById('flipBtn');
@@ -549,19 +614,20 @@
   }
 
   function updateSourceVisibility() {
-    // In file mode, show the real video (with native scrub controls) whenever
-    // not actively recording, so you can play/pause/seek to find your spot.
-    // Once recording, hide it and show only the canvas — same look as camera mode.
+    // In file mode, show the real video whenever not actively recording, so
+    // you can play/pause/seek to find your spot using our own transport
+    // controls (native <video controls> aren't reliable to show up inside
+    // an installed PWA, so we don't depend on them).
     if (sourceMode === 'file' && recordingState !== 'recording' && recordingState !== 'starting') {
       video.classList.add('source-visible');
-      video.controls = true;
       canvas.style.display = 'none';
       skipBar.classList.add('show');
+      scrubBarWrap.classList.add('show');
     } else {
       video.classList.remove('source-visible');
-      video.controls = false;
       canvas.style.display = '';
       skipBar.classList.remove('show');
+      scrubBarWrap.classList.remove('show');
     }
   }
 
@@ -571,6 +637,33 @@
   }
   skip10Btn.addEventListener('click', () => skipVideo(10));
   skip30Btn.addEventListener('click', () => skipVideo(30));
+  skipBack10Btn.addEventListener('click', () => skipVideo(-10));
+  skipBack30Btn.addEventListener('click', () => skipVideo(-30));
+  restartBtn.addEventListener('click', () => { video.currentTime = 0; });
+
+  function formatMinSec(sec) {
+    if (!isFinite(sec) || sec < 0) sec = 0;
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${m}:${String(s).padStart(2, '0')}`;
+  }
+
+  let scrubDragging = false;
+  scrubRange.addEventListener('input', () => {
+    scrubDragging = true;
+    if (video.duration) {
+      const t = (scrubRange.value / 1000) * video.duration;
+      video.currentTime = t;
+      scrubTimeLabel.textContent = formatMinSec(t) + ' / ' + formatMinSec(video.duration);
+    }
+  });
+  scrubRange.addEventListener('change', () => { scrubDragging = false; });
+
+  video.addEventListener('timeupdate', () => {
+    if (!video.duration || scrubDragging) return;
+    scrubRange.value = Math.round((video.currentTime / video.duration) * 1000);
+    scrubTimeLabel.textContent = formatMinSec(video.currentTime) + ' / ' + formatMinSec(video.duration);
+  });
 
   // Re-request the camera stream when the phone rotates, so landscape and
   // portrait each capture (and fill) their own native screen aspect ratio.
