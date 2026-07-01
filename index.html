@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#161513">
+<title>Timing Cam</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<style>
+  :root{
+    --track-red:#c1272d;
+    --ink:#161513;
+    --paper:#f4f1ea;
+    --mono: 'Consolas','SFMono-Regular',Menlo,monospace;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0;padding:0;
+    width:100%;height:100%;
+    background:#000;
+    overflow:hidden;
+    font-family:var(--mono);
+    color:var(--paper);
+  }
+  #stage{
+    position:fixed;inset:0;
+    display:flex;align-items:center;justify-content:center;
+    background:#000;
+  }
+  video{display:none;}
+  canvas{
+    max-width:100%;max-height:100%;
+    width:auto;height:auto;
+    display:block;
+  }
+
+  #permOverlay{
+    position:fixed;inset:0;
+    background:var(--ink);
+    color:var(--paper);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;padding:32px;
+    z-index:50;
+  }
+  #permOverlay h1{font-size:20px;margin:0 0 12px;}
+  #permOverlay p{font-size:14px;line-height:1.6;color:#c9c4b8;max-width:44ch;margin:0 0 20px;}
+  #permOverlay button{
+    font-family:var(--mono);
+    font-size:14px;letter-spacing:.05em;text-transform:uppercase;
+    background:var(--track-red);color:var(--paper);
+    border:none;border-radius:6px;
+    padding:14px 26px;
+    cursor:pointer;
+  }
+  #permOverlay.hidden{display:none;}
+
+  /* top bar */
+  #topBar{
+    position:fixed;top:0;left:0;right:0;
+    display:flex;justify-content:space-between;align-items:center;
+    padding:calc(10px + env(safe-area-inset-top)) 14px 10px;
+    background:linear-gradient(rgba(0,0,0,.55),transparent);
+    z-index:20;
+  }
+  .iconBtn{
+    width:44px;height:44px;
+    border-radius:50%;
+    border:none;
+    background:rgba(0,0,0,.35);
+    color:var(--paper);
+    font-size:20px;
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;
+  }
+  .iconBtn:active{background:rgba(193,39,45,.6);}
+
+  #recBadge{
+    font-size:12px;letter-spacing:.08em;
+    padding:6px 12px;border-radius:20px;
+    background:rgba(0,0,0,.4);
+    display:flex;align-items:center;gap:6px;
+    visibility:hidden;
+  }
+  #recBadge.live{visibility:visible;}
+  #recDot{width:9px;height:9px;border-radius:50%;background:var(--track-red);}
+  #recBadge.paused #recDot{background:#c9a227;}
+  #recDot.blink{animation:blink 1s infinite;}
+  @keyframes blink{50%{opacity:.25;}}
+
+  /* bottom controls */
+  #bottomBar{
+    position:fixed;bottom:0;left:0;right:0;
+    display:flex;flex-direction:column;align-items:center;gap:14px;
+    padding:14px 18px calc(20px + env(safe-area-inset-bottom));
+    background:linear-gradient(transparent,rgba(0,0,0,.6));
+    z-index:20;
+  }
+  #clockRow{
+    display:flex;align-items:center;gap:10px;
+  }
+  .pillBtn{
+    font-family:var(--mono);
+    font-size:13px;letter-spacing:.05em;text-transform:uppercase;
+    border:1px solid rgba(244,241,234,.4);
+    background:rgba(0,0,0,.35);
+    color:var(--paper);
+    border-radius:24px;
+    padding:10px 18px;
+    cursor:pointer;
+  }
+  .pillBtn.active{background:var(--track-red);border-color:var(--track-red);}
+  .pillBtn:disabled{opacity:.35;}
+  .smallBtn{
+    width:40px;height:40px;border-radius:50%;
+    border:1px solid rgba(244,241,234,.4);
+    background:rgba(0,0,0,.35);
+    color:var(--paper);
+    font-size:15px;
+    cursor:pointer;
+  }
+  .smallBtn:disabled{opacity:.3;}
+
+  #recRow{
+    display:flex;align-items:center;gap:26px;
+  }
+  #recMainBtn{
+    width:76px;height:76px;border-radius:50%;
+    border:4px solid var(--paper);
+    background:var(--track-red);
+    cursor:pointer;
+    position:relative;
+  }
+  #recMainBtn.recording{background:var(--paper);}
+  #recMainBtn.recording::after{
+    content:'';
+    position:absolute;inset:26px;
+    background:var(--track-red);
+    border-radius:6px;
+  }
+  #pauseBtn{
+    font-family:var(--mono);
+    font-size:22px;
+    width:56px;height:56px;border-radius:50%;
+    border:1px solid rgba(244,241,234,.4);
+    background:rgba(0,0,0,.35);
+    color:var(--paper);
+    cursor:pointer;
+  }
+  #pauseBtn:disabled{opacity:.3;}
+
+  /* result / share screen */
+  #resultOverlay{
+    position:fixed;inset:0;
+    background:var(--ink);
+    display:none;
+    flex-direction:column;
+    z-index:40;
+  }
+  #resultOverlay.show{display:flex;}
+  #resultOverlay video{
+    display:block;
+    flex:1;min-height:0;
+    width:100%;
+    background:#000;
+    object-fit:contain;
+  }
+  #resultBar{
+    padding:14px 18px calc(18px + env(safe-area-inset-bottom));
+    display:flex;gap:10px;flex-wrap:wrap;
+    justify-content:center;
+  }
+  #resultBar button{
+    font-family:var(--mono);
+    font-size:13px;letter-spacing:.05em;text-transform:uppercase;
+    border:none;border-radius:6px;
+    padding:14px 18px;
+    cursor:pointer;
+  }
+  #shareBtn{background:var(--track-red);color:var(--paper);}
+  #downloadBtn{background:var(--paper);color:var(--ink);}
+  #discardBtn{background:transparent;color:#c9c4b8;border:1px solid #4a4640 !important;}
+
+  #installBtn{
+    position:fixed;
+    top:calc(10px + env(safe-area-inset-top));
+    left:50%;
+    transform:translateX(-50%);
+    display:none;
+    font-family:var(--mono);
+    font-size:11px;letter-spacing:.05em;text-transform:uppercase;
+    background:var(--track-red);color:var(--paper);
+    border:none;border-radius:20px;
+    padding:8px 16px;
+    z-index:25;
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <video id="video" playsinline muted autoplay></video>
+  <canvas id="canvas"></canvas>
+</div>
+
+<button id="installBtn">Install app</button>
+
+<div id="permOverlay">
+  <h1>Timing Cam</h1>
+  <p>Needs access to your camera (and microphone, for crowd/gun audio) to record. Nothing is uploaded anywhere &mdash; recording stays on this device until you share it.</p>
+  <button id="permBtn">Enable camera</button>
+  <p id="permError" style="color:#e78a8e;margin-top:16px;"></p>
+</div>
+
+<div id="topBar">
+  <button id="flipBtn" class="iconBtn" title="Flip camera">&#8635;</button>
+  <div id="recBadge"><span id="recDot"></span><span id="recLabel">REC</span></div>
+  <div style="width:44px;"></div>
+</div>
+
+<div id="bottomBar">
+  <div id="clockRow">
+    <button id="resetClockBtn" class="smallBtn" title="Reset clock">&#8634;</button>
+    <button id="clockBtn" class="pillBtn">Start clock</button>
+  </div>
+  <div id="recRow">
+    <div style="width:56px;"></div>
+    <button id="recMainBtn" title="Start/stop recording"></button>
+    <button id="pauseBtn" title="Pause/resume recording" disabled>&#10074;&#10074;</button>
+  </div>
+</div>
+
+<div id="resultOverlay">
+  <video id="resultVideo" controls playsinline></video>
+  <div id="resultBar">
+    <button id="shareBtn">Share</button>
+    <button id="downloadBtn">Save to device</button>
+    <button id="discardBtn">Discard &amp; record again</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+
+  const permOverlay = document.getElementById('permOverlay');
+  const permBtn = document.getElementById('permBtn');
+  const permError = document.getElementById('permError');
+
+  const flipBtn = document.getElementById('flipBtn');
+  const recBadge = document.getElementById('recBadge');
+  const recDot = document.getElementById('recDot');
+  const recLabel = document.getElementById('recLabel');
+
+  const clockBtn = document.getElementById('clockBtn');
+  const resetClockBtn = document.getElementById('resetClockBtn');
+  const recMainBtn = document.getElementById('recMainBtn');
+  const pauseBtn = document.getElementById('pauseBtn');
+
+  const resultOverlay = document.getElementById('resultOverlay');
+  const resultVideo = document.getElementById('resultVideo');
+  const shareBtn = document.getElementById('shareBtn');
+  const downloadBtn = document.getElementById('downloadBtn');
+  const discardBtn = document.getElementById('discardBtn');
+
+  const installBtn = document.getElementById('installBtn');
+
+  let facingMode = 'environment';
+  let cameraStream = null;
+
+  let clockRunning = false;
+  let clockElapsedMs = 0;
+  let clockStartPerf = 0;
+
+  let recorder = null;
+  let recordingState = 'idle'; // idle | recording | paused
+  let recordedChunks = [];
+  let lastBlobUrl = null;
+
+  // ---------- Camera setup ----------
+
+  async function startCamera() {
+    if (!window.isSecureContext) {
+      permError.textContent = 'This page must be served over HTTPS (or localhost) for the camera to work.';
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode,
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          frameRate: { ideal: 30 }
+        },
+        audio: true
+      });
+      cameraStream = stream;
+      video.srcObject = stream;
+      await video.play();
+      permOverlay.classList.add('hidden');
+      sizeCanvasToVideo();
+      requestAnimationFrame(drawLoop);
+    } catch (err) {
+      permError.textContent = 'Could not access camera: ' + (err.message || err.name);
+    }
+  }
+
+  function sizeCanvasToVideo() {
+    const vw = video.videoWidth || 1280;
+    const vh = video.videoHeight || 720;
+    canvas.width = vw;
+    canvas.height = vh;
+  }
+
+  async function flipCamera() {
+    if (recordingState !== 'idle') return; // keep it simple: no flipping mid-recording
+    facingMode = facingMode === 'environment' ? 'user' : 'environment';
+    if (cameraStream) cameraStream.getTracks().forEach(t => t.stop());
+    await startCamera();
+  }
+
+  flipBtn.addEventListener('click', flipCamera);
+  permBtn.addEventListener('click', startCamera);
+
+  // ---------- Clock ----------
+
+  function currentClockMs() {
+    return clockElapsedMs + (clockRunning ? performance.now() - clockStartPerf : 0);
+  }
+
+  function formatClock(ms) {
+    const totalSec = ms / 1000;
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec - m * 60;
+    return `${m}:${s.toFixed(2).padStart(5, '0')}`;
+  }
+
+  clockBtn.addEventListener('click', () => {
+    if (clockRunning) {
+      clockElapsedMs += performance.now() - clockStartPerf;
+      clockRunning = false;
+      clockBtn.textContent = 'Start clock';
+      clockBtn.classList.remove('active');
+      resetClockBtn.disabled = false;
+    } else {
+      clockStartPerf = performance.now();
+      clockRunning = true;
+      clockBtn.textContent = 'Stop clock';
+      clockBtn.classList.add('active');
+      resetClockBtn.disabled = true;
+    }
+  });
+
+  resetClockBtn.addEventListener('click', () => {
+    if (clockRunning) return;
+    clockElapsedMs = 0;
+  });
+
+  // ---------- Draw loop (burns the clock into the canvas every frame) ----------
+
+  function drawLoop() {
+    if (video.videoWidth && (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight)) {
+      sizeCanvasToVideo();
+    }
+    if (video.readyState >= 2) {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      drawClockOverlay();
+    }
+    requestAnimationFrame(drawLoop);
+  }
+
+  function drawClockOverlay() {
+    const text = formatClock(currentClockMs());
+    const fontSize = Math.round(canvas.width * 0.055);
+    ctx.font = `700 ${fontSize}px Consolas, Menlo, monospace`;
+    const padX = fontSize * 0.5;
+    const padY = fontSize * 0.35;
+    const textWidth = ctx.measureText(text).width;
+    const pillW = textWidth + padX * 2;
+    const pillH = fontSize + padY * 2;
+    const x = fontSize * 0.5;
+    const y = canvas.height - pillH - fontSize * 0.5;
+
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    roundRect(ctx, x, y, pillW, pillH, pillH / 2);
+    ctx.fill();
+
+    ctx.fillStyle = clockRunning ? '#f4f1ea' : '#c9a227';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, x + padX, y + pillH / 2 + fontSize * 0.06);
+  }
+
+  function roundRect(c, x, y, w, h, r) {
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.arcTo(x + w, y, x + w, y + h, r);
+    c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r);
+    c.arcTo(x, y, x + w, y, r);
+    c.closePath();
+  }
+
+  // ---------- Recording ----------
+
+  function pickMimeType() {
+    const candidates = [
+      'video/webm;codecs=vp8,opus',
+      'video/webm;codecs=vp8',
+      'video/webm'
+    ];
+    for (const c of candidates) {
+      if (window.MediaRecorder && MediaRecorder.isTypeSupported(c)) return c;
+    }
+    return '';
+  }
+
+  function startRecording() {
+    const canvasStream = canvas.captureStream(30);
+    const audioTracks = cameraStream ? cameraStream.getAudioTracks() : [];
+    const combined = new MediaStream([...canvasStream.getVideoTracks(), ...audioTracks]);
+
+    const mimeType = pickMimeType();
+    recorder = mimeType
+      ? new MediaRecorder(combined, { mimeType, videoBitsPerSecond: 4_000_000 })
+      : new MediaRecorder(combined);
+
+    recordedChunks = [];
+    recorder.ondataavailable = e => { if (e.data && e.data.size > 0) recordedChunks.push(e.data); };
+    recorder.onstop = onRecordingStopped;
+    recorder.start(1000);
+
+    recordingState = 'recording';
+    updateRecUI();
+  }
+
+  function togglePause() {
+    if (!recorder) return;
+    if (recordingState === 'recording') {
+      recorder.pause();
+      recordingState = 'paused';
+    } else if (recordingState === 'paused') {
+      recorder.resume();
+      recordingState = 'recording';
+    }
+    updateRecUI();
+  }
+
+  function stopRecording() {
+    if (!recorder) return;
+    recorder.stop();
+    recordingState = 'idle';
+    updateRecUI();
+  }
+
+  function updateRecUI() {
+    recMainBtn.classList.toggle('recording', recordingState !== 'idle');
+    pauseBtn.disabled = recordingState === 'idle';
+    pauseBtn.textContent = recordingState === 'paused' ? '\u25B6' : '\u2759\u2759';
+
+    recBadge.classList.toggle('live', recordingState !== 'idle');
+    recBadge.classList.toggle('paused', recordingState === 'paused');
+    recDot.classList.toggle('blink', recordingState === 'recording');
+    recLabel.textContent = recordingState === 'paused' ? 'PAUSED' : 'REC';
+  }
+
+  function onRecordingStopped() {
+    const blob = new Blob(recordedChunks, { type: 'video/webm' });
+    if (lastBlobUrl) URL.revokeObjectURL(lastBlobUrl);
+    lastBlobUrl = URL.createObjectURL(blob);
+    resultVideo.src = lastBlobUrl;
+    resultOverlay.classList.add('show');
+    window.__lastBlob = blob;
+  }
+
+  recMainBtn.addEventListener('click', () => {
+    if (recordingState === 'idle') startRecording();
+    else stopRecording();
+  });
+  pauseBtn.addEventListener('click', togglePause);
+
+  // ---------- Result screen actions ----------
+
+  shareBtn.addEventListener('click', async () => {
+    const blob = window.__lastBlob;
+    if (!blob) return;
+    const file = new File([blob], `timing-cam-${Date.now()}.webm`, { type: 'video/webm' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: 'Race video' });
+      } catch (e) { /* user cancelled */ }
+    } else {
+      downloadBlob();
+    }
+  });
+
+  downloadBtn.addEventListener('click', downloadBlob);
+
+  function downloadBlob() {
+    const blob = window.__lastBlob;
+    if (!blob) return;
+    const a = document.createElement('a');
+    a.href = lastBlobUrl;
+    a.download = `timing-cam-${Date.now()}.webm`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+
+  discardBtn.addEventListener('click', () => {
+    resultOverlay.classList.remove('show');
+    resultVideo.pause();
+    resultVideo.removeAttribute('src');
+    recordedChunks = [];
+  });
+
+  // ---------- PWA install prompt ----------
+
+  let deferredPrompt = null;
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    deferredPrompt = e;
+    installBtn.style.display = 'block';
+  });
+  installBtn.addEventListener('click', async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    installBtn.style.display = 'none';
+  });
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    });
+  }
+
+  updateRecUI();
+})();
+</script>
+</body>
+</html>
