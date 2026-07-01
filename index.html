@@ -8,6 +8,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
+<script src="https://cdn.jsdelivr.net/npm/fix-webm-duration@1.0.6/fix-webm-duration.js"></script>
 <style>
   :root{
     --track-red:#c1272d;
@@ -285,6 +286,13 @@
   let recordingState = 'idle'; // idle | recording | paused
   let recordedChunks = [];
   let lastBlobUrl = null;
+  let recordingActiveMs = 0;      // accumulated duration across all non-paused segments
+  let activeSegmentStart = 0;     // performance.now() when the current active segment began
+  let lastRecordingDurationMs = 0;
+
+  function currentActiveDurationMs() {
+    return recordingActiveMs + (recordingState === 'recording' ? performance.now() - activeSegmentStart : 0);
+  }
 
   // ---------- Camera setup ----------
 
@@ -490,6 +498,8 @@
     recorder.onstop = onRecordingStopped;
     recorder.start(1000);
 
+    recordingActiveMs = 0;
+    activeSegmentStart = performance.now();
     recordingState = 'recording';
     updateRecUI();
   }
@@ -497,6 +507,7 @@
   function pauseRecording() {
     if (!recorder || recordingState !== 'recording') return;
     recorder.pause();
+    recordingActiveMs += performance.now() - activeSegmentStart;
     recordingState = 'paused';
     updateRecUI();
   }
@@ -504,12 +515,14 @@
   function resumeRecording() {
     if (!recorder || recordingState !== 'paused') return;
     recorder.resume();
+    activeSegmentStart = performance.now();
     recordingState = 'recording';
     updateRecUI();
   }
 
   function finishRecording() {
     if (!recorder || recordingState === 'idle') return;
+    lastRecordingDurationMs = currentActiveDurationMs();
     recorder.stop();
     recordingState = 'idle';
     updateRecUI();
@@ -537,12 +550,29 @@
   }
 
   function onRecordingStopped() {
-    const blob = new Blob(recordedChunks, { type: 'video/webm' });
-    if (lastBlobUrl) URL.revokeObjectURL(lastBlobUrl);
-    lastBlobUrl = URL.createObjectURL(blob);
-    resultVideo.src = lastBlobUrl;
-    resultOverlay.classList.add('show');
-    window.__lastBlob = blob;
+    const buggyBlob = new Blob(recordedChunks, { type: 'video/webm' });
+
+    const useBlob = (blob) => {
+      if (lastBlobUrl) URL.revokeObjectURL(lastBlobUrl);
+      lastBlobUrl = URL.createObjectURL(blob);
+      resultVideo.src = lastBlobUrl;
+      resultOverlay.classList.add('show');
+      window.__lastBlob = blob;
+    };
+
+    if (window.ysFixWebmDuration && lastRecordingDurationMs > 0) {
+      try {
+        window.ysFixWebmDuration(buggyBlob, lastRecordingDurationMs, { logger: false })
+          .then(useBlob)
+          .catch(() => useBlob(buggyBlob));
+      } catch (e) {
+        useBlob(buggyBlob);
+      }
+    } else {
+      // Library didn't load (e.g. offline) or duration wasn't tracked — still
+      // usable, just without a working seek bar in some players.
+      useBlob(buggyBlob);
+    }
   }
 
   recMainBtn.addEventListener('click', () => {
