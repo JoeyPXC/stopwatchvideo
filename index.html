@@ -209,6 +209,25 @@
   }
   #orientDebug.show{opacity:1;}
 
+  #zoomIndicator{
+    position:fixed;
+    top:50%;
+    left:50%;
+    transform:translate(-50%,-50%);
+    font-family:var(--mono);
+    font-weight:700;
+    font-size:22px;
+    background:rgba(0,0,0,.5);
+    color:var(--paper);
+    padding:10px 18px;
+    border-radius:14px;
+    z-index:30;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity .15s ease;
+  }
+  #zoomIndicator.show{opacity:1;}
+
   #installBtn{
     position:fixed;
     top:calc(10px + env(safe-area-inset-top));
@@ -259,12 +278,15 @@
 
 <div id="orientDebug"></div>
 
+<div id="zoomIndicator"></div>
+
 <div id="versionTag">v7</div>
 
 <div id="bottomBar">
   <div id="clockRow">
     <button id="resetClockBtn" class="smallBtn" title="Reset clock">&#8634;</button>
     <button id="clockBtn" class="pillBtn">Start clock</button>
+    <button id="lapBtn" class="pillBtn" title="Mark a lap">Lap</button>
   </div>
   <div id="recRow">
     <div style="width:56px;"></div>
@@ -285,6 +307,7 @@
 <script>
 (function(){
   const video = document.getElementById('video');
+  const stage = document.getElementById('stage');
   const canvas = document.getElementById('canvas');
   const ctx = canvas.getContext('2d');
 
@@ -297,9 +320,11 @@
   const recDot = document.getElementById('recDot');
   const recLabel = document.getElementById('recLabel');
   const orientDebug = document.getElementById('orientDebug');
+  const zoomIndicator = document.getElementById('zoomIndicator');
 
   const clockBtn = document.getElementById('clockBtn');
   const resetClockBtn = document.getElementById('resetClockBtn');
+  const lapBtn = document.getElementById('lapBtn');
   const recMainBtn = document.getElementById('recMainBtn');
   const recIcon = document.getElementById('recIcon');
   const finishBtn = document.getElementById('finishBtn');
@@ -320,12 +345,16 @@
 
   let facingMode = 'environment';
   let cameraStream = null;
+  let zoomTrack = null;
+  let zoomCaps = null;      // {min, max, step} if the device supports real hardware zoom
+  let digitalZoomFactor = 1; // used as a fallback when hardware zoom isn't available
   let audioCtx = null;
   let limitedAudioTrack = null;
 
   let clockRunning = false;
   let clockElapsedMs = 0;
   let clockStartPerf = 0;
+  let lastLapMarkMs = 0; // total-clock time (ms) at which the current lap started
 
   let recorder = null;
   let recordingState = 'idle'; // idle | recording | paused
@@ -381,7 +410,8 @@
           aspectRatio: { ideal: targetAspect },
           width: { ideal: isLandscape ? 1920 : 1080 },
           height: { ideal: isLandscape ? 1080 : 1920 },
-          frameRate: { ideal: 30 }
+          frameRate: { ideal: 30 },
+          zoom: true
         },
         audio: {
           echoCancellation: false,
@@ -391,6 +421,15 @@
       });
       cameraStream = stream;
       limitedAudioTrack = buildLimitedAudioTrack(stream.getAudioTracks()[0] || null);
+
+      zoomTrack = stream.getVideoTracks()[0] || null;
+      digitalZoomFactor = 1;
+      zoomCaps = null;
+      try {
+        const caps = zoomTrack && zoomTrack.getCapabilities ? zoomTrack.getCapabilities() : null;
+        if (caps && caps.zoom) zoomCaps = caps.zoom; // {min, max, step}
+      } catch (e) {}
+
       video.srcObject = stream;
       await video.play();
       permOverlay.classList.add('hidden');
@@ -440,6 +479,10 @@
     return clockElapsedMs + (clockRunning ? performance.now() - clockStartPerf : 0);
   }
 
+  function currentLapMs() {
+    return Math.max(0, currentClockMs() - lastLapMarkMs);
+  }
+
   function formatClock(ms) {
     const totalSec = ms / 1000;
     const m = Math.floor(totalSec / 60);
@@ -466,9 +509,80 @@
   resetClockBtn.addEventListener('click', () => {
     if (clockRunning) return;
     clockElapsedMs = 0;
+    lastLapMarkMs = 0;
+  });
+
+  lapBtn.addEventListener('click', () => {
+    lastLapMarkMs = currentClockMs();
   });
 
   // ---------- Draw loop (burns the clock into the canvas every frame) ----------
+
+  // ---------- Pinch-to-zoom ----------
+
+  let pinchActive = false;
+  let pinchStartDist = 0;
+  let pinchStartZoomValue = 1;
+
+  function touchDistance(touches) {
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  function currentZoomValue() {
+    if (zoomCaps) {
+      const settings = zoomTrack && zoomTrack.getSettings ? zoomTrack.getSettings() : null;
+      return (settings && typeof settings.zoom === 'number') ? settings.zoom : zoomCaps.min;
+    }
+    return digitalZoomFactor;
+  }
+
+  function showZoomIndicator(text) {
+    zoomIndicator.textContent = text;
+    zoomIndicator.classList.add('show');
+    clearTimeout(showZoomIndicator._t);
+    showZoomIndicator._t = setTimeout(() => zoomIndicator.classList.remove('show'), 1200);
+  }
+
+  function applyZoomValue(value) {
+    if (zoomCaps) {
+      const clamped = Math.min(zoomCaps.max, Math.max(zoomCaps.min, value));
+      if (zoomTrack && zoomTrack.applyConstraints) {
+        zoomTrack.applyConstraints({ advanced: [{ zoom: clamped }] }).catch(() => {});
+      }
+      showZoomIndicator(clamped.toFixed(1) + 'x');
+    } else {
+      const clamped = Math.min(4, Math.max(1, value));
+      digitalZoomFactor = clamped;
+      showZoomIndicator(clamped.toFixed(1) + 'x (digital)');
+    }
+  }
+
+  stage.addEventListener('touchstart', e => {
+    if (e.touches.length === 2) {
+      pinchActive = true;
+      pinchStartDist = touchDistance(e.touches);
+      pinchStartZoomValue = currentZoomValue();
+    }
+  }, { passive: true });
+
+  stage.addEventListener('touchmove', e => {
+    if (pinchActive && e.touches.length === 2) {
+      e.preventDefault(); // stop the browser's own page-zoom gesture from fighting with this
+      const dist = touchDistance(e.touches);
+      if (pinchStartDist > 0) {
+        const ratio = dist / pinchStartDist;
+        applyZoomValue(pinchStartZoomValue * ratio);
+      }
+    }
+  }, { passive: false });
+
+  stage.addEventListener('touchend', e => {
+    if (e.touches.length < 2) pinchActive = false;
+  }, { passive: true });
+
+  stage.addEventListener('touchcancel', () => { pinchActive = false; }, { passive: true });
 
   function drawLoop() {
     // Only allow the recording frame size to track the camera when idle.
@@ -480,31 +594,64 @@
       sizeCanvasToVideo();
     }
     if (video.readyState >= 2) {
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      if (!zoomCaps && digitalZoomFactor > 1 && video.videoWidth) {
+        // Digital zoom fallback: draw a centered crop of the source frame,
+        // scaled up to fill the recording frame. Hardware zoom (when
+        // available) already returns a zoomed frame directly, so this only
+        // applies when there's no real optical/hybrid zoom on the device.
+        const sw = video.videoWidth / digitalZoomFactor;
+        const sh = video.videoHeight / digitalZoomFactor;
+        const sx = (video.videoWidth - sw) / 2;
+        const sy = (video.videoHeight - sh) / 2;
+        ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+      } else {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      }
       drawClockOverlay();
     }
     requestAnimationFrame(drawLoop);
   }
 
-  function drawClockOverlay() {
-    const text = formatClock(currentClockMs());
-    const fontSize = Math.round(canvas.width * 0.055);
+  function drawTimePill(text, x, bottomY, fontSize, color) {
     ctx.font = `700 ${fontSize}px Consolas, Menlo, monospace`;
     const padX = fontSize * 0.5;
     const padY = fontSize * 0.35;
     const textWidth = ctx.measureText(text).width;
     const pillW = textWidth + padX * 2;
     const pillH = fontSize + padY * 2;
-    const x = fontSize * 0.5;
-    const y = canvas.height - pillH - fontSize * 0.5;
+    const y = bottomY - pillH;
 
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
     roundRect(ctx, x, y, pillW, pillH, pillH / 2);
     ctx.fill();
 
-    ctx.fillStyle = clockRunning ? '#f4f1ea' : '#c9a227';
+    ctx.fillStyle = color;
     ctx.textBaseline = 'middle';
     ctx.fillText(text, x + padX, y + pillH / 2 + fontSize * 0.06);
+
+    return y; // top edge of this pill, so a caller can stack another pill above it
+  }
+
+  function drawClockOverlay() {
+    const totalFontSize = Math.round(canvas.width * 0.055);
+    const lapFontSize = Math.round(totalFontSize * 0.6);
+    const x = totalFontSize * 0.5;
+    const bottomMargin = totalFontSize * 0.5;
+    const pillGap = totalFontSize * 0.16;
+
+    const totalColor = clockRunning ? '#f4f1ea' : '#c9a227';
+    const totalTop = drawTimePill(
+      formatClock(currentClockMs()), x, canvas.height - bottomMargin, totalFontSize, totalColor
+    );
+
+    // Only show the lap pill once a lap has actually been used this session
+    // (checkpoint moved off zero, or clock is running) — keeps a simple
+    // single-clock look for anyone who never touches the Lap button.
+    if (lastLapMarkMs > 0 || clockRunning) {
+      drawTimePill(
+        formatClock(currentLapMs()), x, totalTop - pillGap, lapFontSize, '#f4f1ea'
+      );
+    }
   }
 
   function roundRect(c, x, y, w, h, r) {
