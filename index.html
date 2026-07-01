@@ -872,6 +872,7 @@
   let scrubStartX = 0;
   let scrubStartTime = 0;
   let scrubMoved = false;
+  let lastTouchActivity = 0; // guards against the "ghost" mouse events touchscreens fire after a real touch
 
   function scrubDragStart(clientX) {
     scrubStartX = clientX;
@@ -895,15 +896,27 @@
   }
 
   resultVideoWrap.addEventListener('touchstart', e => {
+    lastTouchActivity = Date.now();
     scrubDragStart(e.touches[0].clientX);
   }, { passive: true });
   resultVideoWrap.addEventListener('touchmove', e => {
+    lastTouchActivity = Date.now();
     scrubDragMove(e.touches[0].clientX);
   }, { passive: true });
-  resultVideoWrap.addEventListener('touchend', scrubDragEnd);
+  resultVideoWrap.addEventListener('touchend', () => {
+    lastTouchActivity = Date.now();
+    scrubDragEnd();
+  });
 
+  // Mouse handlers exist for desktop testing only — on a touchscreen, the
+  // browser also fires a synthesized "ghost" mousedown/mouseup shortly after
+  // every real touch for backward compatibility. Without this guard, a
+  // single tap would toggle play/pause twice (once from touch, once from
+  // the ghost mouse event right after), which is exactly why it took a
+  // couple of taps to actually get the video playing.
   let mouseScrubbing = false;
   resultVideoWrap.addEventListener('mousedown', e => {
+    if (Date.now() - lastTouchActivity < 800) return;
     mouseScrubbing = true;
     scrubDragStart(e.clientX);
   });
