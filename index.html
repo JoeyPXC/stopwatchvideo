@@ -432,7 +432,12 @@
   // ---------- Draw loop (burns the clock into the canvas every frame) ----------
 
   function drawLoop() {
-    if (video.videoWidth && (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight)) {
+    // Only allow the recording frame size to track the camera when idle.
+    // Once recording starts, the frame size is locked for the whole
+    // recording — a physical device rotation mid-recording should never
+    // change (or visually rotate) the video that's already in progress.
+    if (recordingState === 'idle' && video.videoWidth &&
+        (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight)) {
       sizeCanvasToVideo();
     }
     if (video.readyState >= 2) {
