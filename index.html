@@ -31,6 +31,12 @@
     background:#000;
   }
   video{display:none;}
+  video.source-visible{
+    display:block;
+    max-width:100%;max-height:100%;
+    width:auto;height:auto;
+    z-index:5;
+  }
   canvas{
     max-width:100%;max-height:100%;
     width:auto;height:auto;
@@ -54,6 +60,14 @@
     border:none;border-radius:6px;
     padding:14px 26px;
     cursor:pointer;
+  }
+  #permOverlay .permOr{
+    font-size:12px;color:#6b665d;margin:14px 0 6px;
+  }
+  #permOverlay .secondaryPermBtn{
+    background:transparent;
+    color:var(--paper);
+    border:1px solid rgba(244,241,234,.35);
   }
   #permOverlay.hidden{display:none;}
 
@@ -99,7 +113,7 @@
     z-index:20;
   }
   #clockRow{
-    display:flex;align-items:center;gap:10px;
+    display:flex;align-items:center;gap:10px;justify-content:center;flex-wrap:wrap;
   }
   .pillBtn{
     font-family:var(--mono);
@@ -267,6 +281,9 @@
   <h1>Stopwatch Video</h1>
   <p>Needs access to your camera (and microphone, for crowd/gun audio) to record. Nothing is uploaded anywhere &mdash; recording stays on this device until you share it.</p>
   <button id="permBtn">Enable camera</button>
+  <p class="permOr">or</p>
+  <button id="useFileBtn" class="secondaryPermBtn">Add clock to an existing video</button>
+  <input type="file" id="videoFileInput" accept="video/*" style="display:none;">
   <p id="permError" style="color:#e78a8e;margin-top:16px;"></p>
 </div>
 
@@ -287,6 +304,7 @@
     <button id="resetClockBtn" class="smallBtn" title="Reset clock">&#8634;</button>
     <button id="clockBtn" class="pillBtn">Start clock</button>
     <button id="lapBtn" class="pillBtn" title="Mark a lap">Lap</button>
+    <button id="autoStartBtn" class="pillBtn" title="Auto-start the clock on a loud sound (gun/horn)">Auto-Start</button>
   </div>
   <div id="recRow">
     <div style="width:56px;"></div>
@@ -313,6 +331,8 @@
 
   const permOverlay = document.getElementById('permOverlay');
   const permBtn = document.getElementById('permBtn');
+  const useFileBtn = document.getElementById('useFileBtn');
+  const videoFileInput = document.getElementById('videoFileInput');
   const permError = document.getElementById('permError');
 
   const flipBtn = document.getElementById('flipBtn');
@@ -325,6 +345,7 @@
   const clockBtn = document.getElementById('clockBtn');
   const resetClockBtn = document.getElementById('resetClockBtn');
   const lapBtn = document.getElementById('lapBtn');
+  const autoStartBtn = document.getElementById('autoStartBtn');
   const recMainBtn = document.getElementById('recMainBtn');
   const recIcon = document.getElementById('recIcon');
   const finishBtn = document.getElementById('finishBtn');
@@ -344,12 +365,19 @@
   if (isIOS()) downloadBtn.textContent = 'Save (via Share Sheet)';
 
   let facingMode = 'environment';
+  let sourceMode = 'camera'; // 'camera' | 'file'
+  let fileMediaStream = null; // captureStream() of the uploaded <video>, kept alive for its audio track
   let cameraStream = null;
   let zoomTrack = null;
   let zoomCaps = null;      // {min, max, step} if the device supports real hardware zoom
   let digitalZoomFactor = 1; // used as a fallback when hardware zoom isn't available
   let audioCtx = null;
   let limitedAudioTrack = null;
+  let audioMonitorAnalyser = null;
+  let audioMonitorBuffer = null;
+  let autoStartArmed = false;
+  let autoStartArmedAt = 0;
+  let autoStartNoiseFloor = 0.02;
 
   let clockRunning = false;
   let clockElapsedMs = 0;
@@ -376,7 +404,10 @@
     // which means loud peaks (PA system, gun, crowd) can clip and crackle.
     // This runs the raw mic through a fast limiter that only catches peaks
     // right before they'd clip, leaving normal volume levels untouched.
+    disarmAutoStart();
     if (audioCtx) { try { audioCtx.close(); } catch (e) {} audioCtx = null; }
+    audioMonitorAnalyser = null;
+    audioMonitorBuffer = null;
     if (!rawTrack) return null;
     try {
       const Ctx = window.AudioContext || window.webkitAudioContext;
@@ -390,6 +421,17 @@
       limiter.release.setValueAtTime(0.2, audioCtx.currentTime);
       const dest = audioCtx.createMediaStreamDestination();
       source.connect(limiter).connect(dest);
+
+      // Separate tap for gun/horn detection, off the RAW signal before the
+      // limiter — the limiter is specifically designed to flatten the exact
+      // kind of sharp spike a starting gun makes, so detection needs to see
+      // the un-flattened signal instead.
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 1024;
+      source.connect(analyser);
+      audioMonitorAnalyser = analyser;
+      audioMonitorBuffer = new Float32Array(analyser.fftSize);
+
       audioCtx.resume().catch(() => {});
       return dest.stream.getAudioTracks()[0] || rawTrack;
     } catch (e) {
@@ -458,6 +500,59 @@
   flipBtn.addEventListener('click', flipCamera);
   permBtn.addEventListener('click', startCamera);
 
+  useFileBtn.addEventListener('click', () => videoFileInput.click());
+  videoFileInput.addEventListener('change', e => {
+    if (e.target.files.length) startFileMode(e.target.files[0]);
+  });
+
+  async function startFileMode(file) {
+    sourceMode = 'file';
+    flipBtn.style.display = 'none'; // no camera to flip in file mode
+    zoomCaps = null;
+    digitalZoomFactor = 1;
+
+    const url = URL.createObjectURL(file);
+    video.srcObject = null;
+    video.src = url;
+    video.muted = false;   // hear the uploaded video's own audio while scrubbing
+    video.loop = false;
+
+    await new Promise(resolve => {
+      video.onloadedmetadata = () => resolve();
+    });
+    video.pause(); // start paused so you can scrub to the exact spot before recording
+
+    try {
+      fileMediaStream = video.captureStream ? video.captureStream() : null;
+    } catch (e) {
+      fileMediaStream = null;
+    }
+
+    video.addEventListener('ended', () => {
+      if (recordingState === 'recording' || recordingState === 'paused') finishRecording();
+    });
+
+    permOverlay.classList.add('hidden');
+    sizeCanvasToVideo();
+    updateSourceVisibility();
+    requestAnimationFrame(drawLoop);
+  }
+
+  function updateSourceVisibility() {
+    // In file mode, show the real video (with native scrub controls) whenever
+    // not actively recording, so you can play/pause/seek to find your spot.
+    // Once recording, hide it and show only the canvas — same look as camera mode.
+    if (sourceMode === 'file' && recordingState !== 'recording' && recordingState !== 'starting') {
+      video.classList.add('source-visible');
+      video.controls = true;
+      canvas.style.display = 'none';
+    } else {
+      video.classList.remove('source-visible');
+      video.controls = false;
+      canvas.style.display = '';
+    }
+  }
+
   // Re-request the camera stream when the phone rotates, so landscape and
   // portrait each capture (and fill) their own native screen aspect ratio.
   // Never interrupts an active recording — just waits until it's finished.
@@ -491,20 +586,26 @@
     return `${m}:${s.toFixed(2).padStart(5, '0')}`;
   }
 
+  function startClockNow() {
+    if (clockRunning) return;
+    clockStartPerf = performance.now();
+    clockRunning = true;
+    clockBtn.textContent = 'Stop clock';
+    clockBtn.classList.add('active');
+    resetClockBtn.disabled = true;
+  }
+
+  function stopClockNow() {
+    if (!clockRunning) return;
+    clockElapsedMs += performance.now() - clockStartPerf;
+    clockRunning = false;
+    clockBtn.textContent = 'Start clock';
+    clockBtn.classList.remove('active');
+    resetClockBtn.disabled = false;
+  }
+
   clockBtn.addEventListener('click', () => {
-    if (clockRunning) {
-      clockElapsedMs += performance.now() - clockStartPerf;
-      clockRunning = false;
-      clockBtn.textContent = 'Start clock';
-      clockBtn.classList.remove('active');
-      resetClockBtn.disabled = false;
-    } else {
-      clockStartPerf = performance.now();
-      clockRunning = true;
-      clockBtn.textContent = 'Stop clock';
-      clockBtn.classList.add('active');
-      resetClockBtn.disabled = true;
-    }
+    if (clockRunning) stopClockNow(); else startClockNow();
   });
 
   resetClockBtn.addEventListener('click', () => {
@@ -517,6 +618,68 @@
   lapBtn.addEventListener('click', () => {
     lastLapMarkMs = currentClockMs();
     lapUsed = true;
+  });
+
+  // ---------- Sound-triggered auto-start (gun/horn) ----------
+
+  const AUTO_START_MIN_LEVEL = 0.35;   // absolute peak (0..1) that must be exceeded no matter what
+  const AUTO_START_SPIKE_RATIO = 3;    // must also be this many times louder than the recent ambient level
+  const AUTO_START_WARMUP_MS = 300;    // ignore the moment right after arming (e.g. the tap on the button itself)
+
+  function getPeakAmplitude() {
+    if (!audioMonitorAnalyser || !audioMonitorBuffer) return 0;
+    audioMonitorAnalyser.getFloatTimeDomainData(audioMonitorBuffer);
+    let peak = 0;
+    for (let i = 0; i < audioMonitorBuffer.length; i++) {
+      const abs = Math.abs(audioMonitorBuffer[i]);
+      if (abs > peak) peak = abs;
+    }
+    return peak;
+  }
+
+  function armAutoStart() {
+    if (!audioMonitorAnalyser) {
+      showOrientDebug('Auto-start needs the mic — try again once the camera has loaded');
+      return;
+    }
+    autoStartArmed = true;
+    autoStartArmedAt = performance.now();
+    autoStartNoiseFloor = getPeakAmplitude() || 0.02;
+    autoStartBtn.textContent = 'Listening…';
+    autoStartBtn.classList.add('active');
+    requestAnimationFrame(autoStartMonitorTick);
+  }
+
+  function disarmAutoStart() {
+    autoStartArmed = false;
+    if (autoStartBtn) {
+      autoStartBtn.textContent = 'Auto-Start';
+      autoStartBtn.classList.remove('active');
+    }
+  }
+
+  function autoStartMonitorTick() {
+    if (!autoStartArmed) return;
+    const peak = getPeakAmplitude();
+    const warmedUp = performance.now() - autoStartArmedAt > AUTO_START_WARMUP_MS;
+
+    if (warmedUp && peak > AUTO_START_MIN_LEVEL && peak > autoStartNoiseFloor * AUTO_START_SPIKE_RATIO) {
+      disarmAutoStart();
+      startClockNow();
+      showOrientDebug('Clock auto-started by sound');
+      return;
+    }
+
+    // Slowly track the ambient level so the trigger stays sensitive to a
+    // real spike even in a noisier environment (crowd, PA) — only drifts
+    // upward gently, so it can't be "snuck up on" by a gradually loudening
+    // sound the way a real gun/horn transient wouldn't be.
+    autoStartNoiseFloor = autoStartNoiseFloor * 0.98 + peak * 0.02;
+    requestAnimationFrame(autoStartMonitorTick);
+  }
+
+  autoStartBtn.addEventListener('click', () => {
+    if (autoStartArmed) disarmAutoStart(); else armAutoStart();
   });
 
   // ---------- Draw loop (burns the clock into the canvas every frame) ----------
@@ -726,9 +889,9 @@
 
   function startRecording() {
     const canvasStream = canvas.captureStream(30);
-    const audioTracks = limitedAudioTrack
-      ? [limitedAudioTrack]
-      : (cameraStream ? cameraStream.getAudioTracks() : []);
+    const audioTracks = sourceMode === 'file'
+      ? (fileMediaStream ? fileMediaStream.getAudioTracks() : [])
+      : (limitedAudioTrack ? [limitedAudioTrack] : (cameraStream ? cameraStream.getAudioTracks() : []));
     const combined = new MediaStream([...canvasStream.getVideoTracks(), ...audioTracks]);
 
     const mimeType = pickMimeType();
@@ -750,7 +913,11 @@
     setTimeout(() => {
       if (recordingState !== 'starting' || !recorder) return;
       recorder.start(1000);
-      lockOrientationForRecording();
+      if (sourceMode === 'file') {
+        video.play().catch(() => {});
+      } else {
+        lockOrientationForRecording();
+      }
       recordingActiveMs = 0;
       activeSegmentStart = performance.now();
       recordingState = 'recording';
@@ -761,6 +928,7 @@
   function pauseRecording() {
     if (!recorder || recordingState !== 'recording') return;
     recorder.pause();
+    if (sourceMode === 'file') video.pause(); // lets you scrub ahead to the next spot while paused
     recordingActiveMs += performance.now() - activeSegmentStart;
     recordingState = 'paused';
     updateRecUI();
@@ -769,6 +937,7 @@
   function resumeRecording() {
     if (!recorder || recordingState !== 'paused') return;
     recorder.resume();
+    if (sourceMode === 'file') video.play().catch(() => {});
     activeSegmentStart = performance.now();
     recordingState = 'recording';
     updateRecUI();
@@ -779,7 +948,7 @@
     lastRecordingDurationMs = currentActiveDurationMs();
     recorder.stop();
     recordingState = 'idle';
-    unlockOrientation();
+    if (sourceMode === 'file') { video.pause(); } else { unlockOrientation(); }
     updateRecUI();
   }
 
@@ -806,6 +975,8 @@
     recBadge.classList.toggle('paused', recordingState === 'paused');
     recDot.classList.toggle('blink', visualState === 'recording');
     recLabel.textContent = recordingState === 'paused' ? 'PAUSED' : 'REC';
+
+    updateSourceVisibility();
   }
 
   function onRecordingStopped() {
