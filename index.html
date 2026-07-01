@@ -435,7 +435,7 @@
           aspectRatio: { ideal: targetAspect },
           width: { ideal: isLandscape ? 1920 : 1080 },
           height: { ideal: isLandscape ? 1080 : 1920 },
-          frameRate: { ideal: 30 },
+          frameRate: { ideal: 60 },
           zoom: true
         },
         audio: {
@@ -731,14 +731,14 @@
   }
 
   function startRecording() {
-    const canvasStream = canvas.captureStream(30);
+    const canvasStream = canvas.captureStream(60);
     const audioTracks = limitedAudioTrack
       ? [limitedAudioTrack]
       : (cameraStream ? cameraStream.getAudioTracks() : []);
     const combined = new MediaStream([...canvasStream.getVideoTracks(), ...audioTracks]);
 
     const mimeType = pickMimeType();
-    const recorderOpts = { videoBitsPerSecond: 4_000_000, audioBitsPerSecond: 128_000 };
+    const recorderOpts = { videoBitsPerSecond: 8_000_000, audioBitsPerSecond: 128_000 };
     if (mimeType) recorderOpts.mimeType = mimeType;
     recorder = new MediaRecorder(combined, recorderOpts);
 
