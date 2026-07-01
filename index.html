@@ -492,6 +492,21 @@
     return '';
   }
 
+  async function lockOrientationForRecording() {
+    try {
+      const type = window.innerWidth >= window.innerHeight ? 'landscape' : 'portrait';
+      await screen.orientation.lock(type);
+    } catch (e) {
+      // Not supported/permitted on this device — the frame-lock in drawLoop()
+      // still prevents the video itself from changing shape, just without
+      // physically stopping the phone's screen from rotating underneath it.
+    }
+  }
+
+  function unlockOrientation() {
+    try { screen.orientation.unlock(); } catch (e) {}
+  }
+
   function startRecording() {
     const canvasStream = canvas.captureStream(30);
     const audioTracks = limitedAudioTrack
@@ -508,6 +523,8 @@
     recorder.ondataavailable = e => { if (e.data && e.data.size > 0) recordedChunks.push(e.data); };
     recorder.onstop = onRecordingStopped;
     recorder.start(1000);
+
+    lockOrientationForRecording();
 
     recordingActiveMs = 0;
     activeSegmentStart = performance.now();
@@ -536,6 +553,7 @@
     lastRecordingDurationMs = currentActiveDurationMs();
     recorder.stop();
     recordingState = 'idle';
+    unlockOrientation();
     updateRecUI();
   }
 
