@@ -540,6 +540,19 @@
 
   async function lockOrientationForRecording() {
     const type = window.innerWidth >= window.innerHeight ? 'landscape' : 'portrait';
+
+    // The orientation lock API requires the document to actually be in
+    // Fullscreen-API fullscreen — "standalone" PWA display doesn't count,
+    // even though it looks fullscreen. This is the real precondition.
+    if (!document.fullscreenElement) {
+      try {
+        await document.documentElement.requestFullscreen();
+      } catch (e) {
+        // Continue anyway — the lock attempt below will report its own
+        // specific error if fullscreen was actually required and missing.
+      }
+    }
+
     if (!screen.orientation || !screen.orientation.lock) {
       showOrientDebug('Orientation lock: not available on this browser');
       return;
@@ -557,6 +570,9 @@
 
   function unlockOrientation() {
     try { screen.orientation.unlock(); } catch (e) {}
+    if (document.fullscreenElement) {
+      try { document.exitFullscreen(); } catch (e) {}
+    }
   }
 
   function startRecording() {
