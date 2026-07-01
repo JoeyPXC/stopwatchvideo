@@ -292,11 +292,14 @@
       return;
     }
     try {
+      const isLandscape = window.innerWidth >= window.innerHeight;
+      const targetAspect = isLandscape ? 16 / 9 : 9 / 16;
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode,
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
+          aspectRatio: { ideal: targetAspect },
+          width: { ideal: isLandscape ? 1920 : 1080 },
+          height: { ideal: isLandscape ? 1080 : 1920 },
           frameRate: { ideal: 30 }
         },
         audio: {
@@ -333,6 +336,22 @@
 
   flipBtn.addEventListener('click', flipCamera);
   permBtn.addEventListener('click', startCamera);
+
+  // Re-request the camera stream when the phone rotates, so landscape and
+  // portrait each capture (and fill) their own native screen aspect ratio.
+  // Never interrupts an active recording — just waits until it's finished.
+  let orientationDebounce = null;
+  function handleOrientationChange() {
+    if (!cameraStream) return;
+    clearTimeout(orientationDebounce);
+    orientationDebounce = setTimeout(() => {
+      if (recordingState !== 'idle') return; // don't disrupt an active/paused recording
+      cameraStream.getTracks().forEach(t => t.stop());
+      startCamera();
+    }, 350);
+  }
+  window.addEventListener('orientationchange', handleOrientationChange);
+  window.addEventListener('resize', handleOrientationChange);
 
   // ---------- Clock ----------
 
