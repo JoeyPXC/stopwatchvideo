@@ -304,7 +304,6 @@
     <button id="resetClockBtn" class="smallBtn" title="Reset clock">&#8634;</button>
     <button id="clockBtn" class="pillBtn">Start clock</button>
     <button id="lapBtn" class="pillBtn" title="Mark a lap">Lap</button>
-    <button id="autoStartBtn" class="pillBtn" title="Auto-start the clock on a loud sound (gun/horn)">Auto-Start</button>
   </div>
   <div id="recRow">
     <div style="width:56px;"></div>
@@ -345,7 +344,6 @@
   const clockBtn = document.getElementById('clockBtn');
   const resetClockBtn = document.getElementById('resetClockBtn');
   const lapBtn = document.getElementById('lapBtn');
-  const autoStartBtn = document.getElementById('autoStartBtn');
   const recMainBtn = document.getElementById('recMainBtn');
   const recIcon = document.getElementById('recIcon');
   const finishBtn = document.getElementById('finishBtn');
@@ -373,11 +371,6 @@
   let digitalZoomFactor = 1; // used as a fallback when hardware zoom isn't available
   let audioCtx = null;
   let limitedAudioTrack = null;
-  let audioMonitorAnalyser = null;
-  let audioMonitorBuffer = null;
-  let autoStartArmed = false;
-  let autoStartArmedAt = 0;
-  let autoStartNoiseFloor = 0.02;
 
   let clockRunning = false;
   let clockElapsedMs = 0;
@@ -404,10 +397,7 @@
     // which means loud peaks (PA system, gun, crowd) can clip and crackle.
     // This runs the raw mic through a fast limiter that only catches peaks
     // right before they'd clip, leaving normal volume levels untouched.
-    disarmAutoStart();
     if (audioCtx) { try { audioCtx.close(); } catch (e) {} audioCtx = null; }
-    audioMonitorAnalyser = null;
-    audioMonitorBuffer = null;
     if (!rawTrack) return null;
     try {
       const Ctx = window.AudioContext || window.webkitAudioContext;
@@ -421,16 +411,6 @@
       limiter.release.setValueAtTime(0.2, audioCtx.currentTime);
       const dest = audioCtx.createMediaStreamDestination();
       source.connect(limiter).connect(dest);
-
-      // Separate tap for gun/horn detection, off the RAW signal before the
-      // limiter — the limiter is specifically designed to flatten the exact
-      // kind of sharp spike a starting gun makes, so detection needs to see
-      // the un-flattened signal instead.
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 1024;
-      source.connect(analyser);
-      audioMonitorAnalyser = analyser;
-      audioMonitorBuffer = new Float32Array(analyser.fftSize);
 
       audioCtx.resume().catch(() => {});
       return dest.stream.getAudioTracks()[0] || rawTrack;
@@ -583,6 +563,7 @@
     const totalSec = ms / 1000;
     const m = Math.floor(totalSec / 60);
     const s = totalSec - m * 60;
+    if (m === 0) return s.toFixed(2);
     return `${m}:${s.toFixed(2).padStart(5, '0')}`;
   }
 
@@ -618,68 +599,6 @@
   lapBtn.addEventListener('click', () => {
     lastLapMarkMs = currentClockMs();
     lapUsed = true;
-  });
-
-  // ---------- Sound-triggered auto-start (gun/horn) ----------
-
-  const AUTO_START_MIN_LEVEL = 0.35;   // absolute peak (0..1) that must be exceeded no matter what
-  const AUTO_START_SPIKE_RATIO = 3;    // must also be this many times louder than the recent ambient level
-  const AUTO_START_WARMUP_MS = 300;    // ignore the moment right after arming (e.g. the tap on the button itself)
-
-  function getPeakAmplitude() {
-    if (!audioMonitorAnalyser || !audioMonitorBuffer) return 0;
-    audioMonitorAnalyser.getFloatTimeDomainData(audioMonitorBuffer);
-    let peak = 0;
-    for (let i = 0; i < audioMonitorBuffer.length; i++) {
-      const abs = Math.abs(audioMonitorBuffer[i]);
-      if (abs > peak) peak = abs;
-    }
-    return peak;
-  }
-
-  function armAutoStart() {
-    if (!audioMonitorAnalyser) {
-      showOrientDebug('Auto-start needs the mic — try again once the camera has loaded');
-      return;
-    }
-    autoStartArmed = true;
-    autoStartArmedAt = performance.now();
-    autoStartNoiseFloor = getPeakAmplitude() || 0.02;
-    autoStartBtn.textContent = 'Listening…';
-    autoStartBtn.classList.add('active');
-    requestAnimationFrame(autoStartMonitorTick);
-  }
-
-  function disarmAutoStart() {
-    autoStartArmed = false;
-    if (autoStartBtn) {
-      autoStartBtn.textContent = 'Auto-Start';
-      autoStartBtn.classList.remove('active');
-    }
-  }
-
-  function autoStartMonitorTick() {
-    if (!autoStartArmed) return;
-    const peak = getPeakAmplitude();
-    const warmedUp = performance.now() - autoStartArmedAt > AUTO_START_WARMUP_MS;
-
-    if (warmedUp && peak > AUTO_START_MIN_LEVEL && peak > autoStartNoiseFloor * AUTO_START_SPIKE_RATIO) {
-      disarmAutoStart();
-      startClockNow();
-      showOrientDebug('Clock auto-started by sound');
-      return;
-    }
-
-    // Slowly track the ambient level so the trigger stays sensitive to a
-    // real spike even in a noisier environment (crowd, PA) — only drifts
-    // upward gently, so it can't be "snuck up on" by a gradually loudening
-    // sound the way a real gun/horn transient wouldn't be.
-    autoStartNoiseFloor = autoStartNoiseFloor * 0.98 + peak * 0.02;
-    requestAnimationFrame(autoStartMonitorTick);
-  }
-
-  autoStartBtn.addEventListener('click', () => {
-    if (autoStartArmed) disarmAutoStart(); else armAutoStart();
   });
 
   // ---------- Draw loop (burns the clock into the canvas every frame) ----------
@@ -778,44 +697,31 @@
     requestAnimationFrame(drawLoop);
   }
 
-  function drawTimePill(text, x, bottomY, fontSize, color) {
+  function drawTimeText(text, x, baselineY, fontSize, color) {
     ctx.font = `700 ${fontSize}px Consolas, Menlo, monospace`;
-    const padX = fontSize * 0.5;
-    const padY = fontSize * 0.35;
-    const textWidth = ctx.measureText(text).width;
-    const pillW = textWidth + padX * 2;
-    const pillH = fontSize + padY * 2;
-    const y = bottomY - pillH;
-
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
-    roundRect(ctx, x, y, pillW, pillH, pillH / 2);
-    ctx.fill();
-
+    ctx.textBaseline = 'alphabetic';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = Math.max(2, fontSize * 0.14);
+    ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+    ctx.strokeText(text, x, baselineY);
     ctx.fillStyle = color;
-    ctx.textBaseline = 'middle';
-    ctx.fillText(text, x + padX, y + pillH / 2 + fontSize * 0.06);
-
-    return y; // top edge of this pill, so a caller can stack another pill above it
+    ctx.fillText(text, x, baselineY);
   }
 
   function drawClockOverlay() {
-    const totalFontSize = Math.round(canvas.width * 0.055);
+    const totalFontSize = Math.round(canvas.width * 0.045);
     const lapFontSize = Math.round(totalFontSize * 0.6);
     const x = totalFontSize * 0.5;
-    const bottomMargin = totalFontSize * 0.5;
-    const pillGap = totalFontSize * 0.16;
+    const totalBaselineY = canvas.height - totalFontSize * 0.5;
+    const lapBaselineY = totalBaselineY - totalFontSize * 1.15;
 
     const totalColor = clockRunning ? '#f4f1ea' : '#c9a227';
-    const totalTop = drawTimePill(
-      formatClock(currentClockMs()), x, canvas.height - bottomMargin, totalFontSize, totalColor
-    );
+    drawTimeText(formatClock(currentClockMs()), x, totalBaselineY, totalFontSize, totalColor);
 
-    // Only show the lap pill once the Lap button has actually been pressed —
+    // Only show the lap time once the Lap button has actually been pressed —
     // otherwise stay a single clean total-time display, no clutter.
     if (lapUsed) {
-      drawTimePill(
-        formatClock(currentLapMs()), x, totalTop - pillGap, lapFontSize, '#f4f1ea'
-      );
+      drawTimeText(formatClock(currentLapMs()), x, lapBaselineY, lapFontSize, '#f4f1ea');
     }
   }
 
