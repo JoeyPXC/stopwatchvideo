@@ -274,6 +274,8 @@
 
   let facingMode = 'environment';
   let cameraStream = null;
+  let audioCtx = null;
+  let limitedAudioTrack = null;
 
   let clockRunning = false;
   let clockElapsedMs = 0;
@@ -285,6 +287,32 @@
   let lastBlobUrl = null;
 
   // ---------- Camera setup ----------
+
+  function buildLimitedAudioTrack(rawTrack) {
+    // Auto-gain/noise-suppression are off so ambient sound isn't suppressed,
+    // which means loud peaks (PA system, gun, crowd) can clip and crackle.
+    // This runs the raw mic through a fast limiter that only catches peaks
+    // right before they'd clip, leaving normal volume levels untouched.
+    if (audioCtx) { try { audioCtx.close(); } catch (e) {} audioCtx = null; }
+    if (!rawTrack) return null;
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new Ctx();
+      const source = audioCtx.createMediaStreamSource(new MediaStream([rawTrack]));
+      const limiter = audioCtx.createDynamicsCompressor();
+      limiter.threshold.setValueAtTime(-10, audioCtx.currentTime);
+      limiter.knee.setValueAtTime(4, audioCtx.currentTime);
+      limiter.ratio.setValueAtTime(16, audioCtx.currentTime);
+      limiter.attack.setValueAtTime(0.003, audioCtx.currentTime);
+      limiter.release.setValueAtTime(0.2, audioCtx.currentTime);
+      const dest = audioCtx.createMediaStreamDestination();
+      source.connect(limiter).connect(dest);
+      audioCtx.resume().catch(() => {});
+      return dest.stream.getAudioTracks()[0] || rawTrack;
+    } catch (e) {
+      return rawTrack; // if Web Audio processing fails for any reason, fall back to raw audio
+    }
+  }
 
   async function startCamera() {
     if (!window.isSecureContext) {
@@ -305,11 +333,11 @@
         audio: {
           echoCancellation: false,
           noiseSuppression: false,
-          autoGainControl: false,
-          channelCount: 2
+          autoGainControl: false
         }
       });
       cameraStream = stream;
+      limitedAudioTrack = buildLimitedAudioTrack(stream.getAudioTracks()[0] || null);
       video.srcObject = stream;
       await video.play();
       permOverlay.classList.add('hidden');
@@ -447,7 +475,9 @@
 
   function startRecording() {
     const canvasStream = canvas.captureStream(30);
-    const audioTracks = cameraStream ? cameraStream.getAudioTracks() : [];
+    const audioTracks = limitedAudioTrack
+      ? [limitedAudioTrack]
+      : (cameraStream ? cameraStream.getAudioTracks() : []);
     const combined = new MediaStream([...canvasStream.getVideoTracks(), ...audioTracks]);
 
     const mimeType = pickMimeType();
