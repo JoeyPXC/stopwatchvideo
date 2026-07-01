@@ -1,6 +1,6 @@
 {
-  "name": "Timing Cam",
-  "short_name": "TimingCam",
+  "name": "Stopwatch Video",
+  "short_name": "Stopwatch",
   "description": "Camera with a burned-in stopwatch overlay for reading splits back from video.",
   "start_url": "./index.html",
   "scope": "./",

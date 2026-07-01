@@ -1,4 +1,4 @@
-const CACHE_NAME = 'timing-cam-v2';
+const CACHE_NAME = 'stopwatch-video-v1';
 const APP_SHELL = [
   './',
   './index.html',

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="theme-color" content="#161513">
-<title>Timing Cam</title>
+<title>Stopwatch Video</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -210,7 +210,7 @@
 <button id="installBtn">Install app</button>
 
 <div id="permOverlay">
-  <h1>Timing Cam</h1>
+  <h1>Stopwatch Video</h1>
   <p>Needs access to your camera (and microphone, for crowd/gun audio) to record. Nothing is uploaded anywhere &mdash; recording stays on this device until you share it.</p>
   <button id="permBtn">Enable camera</button>
   <p id="permError" style="color:#e78a8e;margin-top:16px;"></p>
@@ -557,7 +557,7 @@
   shareBtn.addEventListener('click', async () => {
     const blob = window.__lastBlob;
     if (!blob) return;
-    const file = new File([blob], `timing-cam-${Date.now()}.webm`, { type: 'video/webm' });
+    const file = new File([blob], `stopwatch-video-${Date.now()}.webm`, { type: 'video/webm' });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       try {
         await navigator.share({ files: [file], title: 'Race video' });
@@ -574,7 +574,7 @@
     if (!blob) return;
     const a = document.createElement('a');
     a.href = lastBlobUrl;
-    a.download = `timing-cam-${Date.now()}.webm`;
+    a.download = `stopwatch-video-${Date.now()}.webm`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
