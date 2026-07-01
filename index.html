@@ -739,14 +739,23 @@
     recordedChunks = [];
     recorder.ondataavailable = e => { if (e.data && e.data.size > 0) recordedChunks.push(e.data); };
     recorder.onstop = onRecordingStopped;
-    recorder.start(1000);
 
-    lockOrientationForRecording();
-
-    recordingActiveMs = 0;
-    activeSegmentStart = performance.now();
-    recordingState = 'recording';
+    recordingState = 'starting';
     updateRecUI();
+
+    // Give the freshly-combined video+audio stream a brief moment to settle
+    // before the encoder actually starts consuming it. Starting a
+    // MediaRecorder the instant a stream is created is a known source of a
+    // short audio crackle right at the very beginning of a recording.
+    setTimeout(() => {
+      if (recordingState !== 'starting' || !recorder) return;
+      recorder.start(1000);
+      lockOrientationForRecording();
+      recordingActiveMs = 0;
+      activeSegmentStart = performance.now();
+      recordingState = 'recording';
+      updateRecUI();
+    }, 200);
   }
 
   function pauseRecording() {
@@ -766,7 +775,7 @@
   }
 
   function finishRecording() {
-    if (!recorder || recordingState === 'idle') return;
+    if (!recorder || recordingState === 'idle' || recordingState === 'starting') return;
     lastRecordingDurationMs = currentActiveDurationMs();
     recorder.stop();
     recordingState = 'idle';
@@ -775,23 +784,27 @@
   }
 
   function updateRecUI() {
+    // 'starting' looks identical to 'recording' (so the button gives instant
+    // visual feedback) but taps are ignored until the encoder has actually begun.
+    const visualState = recordingState === 'starting' ? 'recording' : recordingState;
+
     recMainBtn.classList.remove('state-idle', 'state-recording', 'state-paused');
-    recMainBtn.classList.add('state-' + recordingState);
+    recMainBtn.classList.add('state-' + visualState);
 
     if (recordingState === 'idle') {
       recIcon.innerHTML = '';
-    } else if (recordingState === 'recording') {
+    } else if (visualState === 'recording') {
       recIcon.innerHTML = '&#10074;&#10074;'; // pause icon: tap to pause
     } else {
       recIcon.innerHTML = '&#9654;'; // play icon: tap to resume
     }
 
-    finishBtn.disabled = recordingState === 'idle';
-    finishBtn.classList.toggle('ready', recordingState !== 'idle');
+    finishBtn.disabled = (recordingState === 'idle' || recordingState === 'starting');
+    finishBtn.classList.toggle('ready', recordingState === 'recording' || recordingState === 'paused');
 
     recBadge.classList.toggle('live', recordingState !== 'idle');
     recBadge.classList.toggle('paused', recordingState === 'paused');
-    recDot.classList.toggle('blink', recordingState === 'recording');
+    recDot.classList.toggle('blink', visualState === 'recording');
     recLabel.textContent = recordingState === 'paused' ? 'PAUSED' : 'REC';
   }
 
