@@ -130,25 +130,28 @@
     border:4px solid var(--paper);
     background:var(--track-red);
     cursor:pointer;
-    position:relative;
+    display:flex;align-items:center;justify-content:center;
+    padding:0;
   }
-  #recMainBtn.recording{background:var(--paper);}
-  #recMainBtn.recording::after{
-    content:'';
-    position:absolute;inset:26px;
-    background:var(--track-red);
-    border-radius:6px;
-  }
-  #pauseBtn{
-    font-family:var(--mono);
+  #recMainBtn #recIcon{
     font-size:22px;
+    line-height:1;
+    color:var(--paper);
+  }
+  #recMainBtn.state-paused{background:#c9a227;}
+  #recMainBtn.state-recording #recIcon{color:var(--track-red);}
+  #recMainBtn.state-recording{background:var(--paper);}
+  #finishBtn{
+    font-family:var(--mono);
+    font-size:12px;letter-spacing:.05em;text-transform:uppercase;
     width:56px;height:56px;border-radius:50%;
     border:1px solid rgba(244,241,234,.4);
     background:rgba(0,0,0,.35);
     color:var(--paper);
     cursor:pointer;
   }
-  #pauseBtn:disabled{opacity:.3;}
+  #finishBtn:disabled{opacity:.3;}
+  #finishBtn.ready{background:#2f9e44;border-color:#2f9e44;}
 
   /* result / share screen */
   #resultOverlay{
@@ -226,8 +229,8 @@
   </div>
   <div id="recRow">
     <div style="width:56px;"></div>
-    <button id="recMainBtn" title="Start/stop recording"></button>
-    <button id="pauseBtn" title="Pause/resume recording" disabled>&#10074;&#10074;</button>
+    <button id="recMainBtn" title="Record / pause / resume"><span id="recIcon"></span></button>
+    <button id="finishBtn" title="Finish and save" disabled>Finish</button>
   </div>
 </div>
 
@@ -258,7 +261,8 @@
   const clockBtn = document.getElementById('clockBtn');
   const resetClockBtn = document.getElementById('resetClockBtn');
   const recMainBtn = document.getElementById('recMainBtn');
-  const pauseBtn = document.getElementById('pauseBtn');
+  const recIcon = document.getElementById('recIcon');
+  const finishBtn = document.getElementById('finishBtn');
 
   const resultOverlay = document.getElementById('resultOverlay');
   const resultVideo = document.getElementById('resultVideo');
@@ -436,29 +440,41 @@
     updateRecUI();
   }
 
-  function togglePause() {
-    if (!recorder) return;
-    if (recordingState === 'recording') {
-      recorder.pause();
-      recordingState = 'paused';
-    } else if (recordingState === 'paused') {
-      recorder.resume();
-      recordingState = 'recording';
-    }
+  function pauseRecording() {
+    if (!recorder || recordingState !== 'recording') return;
+    recorder.pause();
+    recordingState = 'paused';
     updateRecUI();
   }
 
-  function stopRecording() {
-    if (!recorder) return;
+  function resumeRecording() {
+    if (!recorder || recordingState !== 'paused') return;
+    recorder.resume();
+    recordingState = 'recording';
+    updateRecUI();
+  }
+
+  function finishRecording() {
+    if (!recorder || recordingState === 'idle') return;
     recorder.stop();
     recordingState = 'idle';
     updateRecUI();
   }
 
   function updateRecUI() {
-    recMainBtn.classList.toggle('recording', recordingState !== 'idle');
-    pauseBtn.disabled = recordingState === 'idle';
-    pauseBtn.textContent = recordingState === 'paused' ? '\u25B6' : '\u2759\u2759';
+    recMainBtn.classList.remove('state-idle', 'state-recording', 'state-paused');
+    recMainBtn.classList.add('state-' + recordingState);
+
+    if (recordingState === 'idle') {
+      recIcon.innerHTML = '';
+    } else if (recordingState === 'recording') {
+      recIcon.innerHTML = '&#10074;&#10074;'; // pause icon: tap to pause
+    } else {
+      recIcon.innerHTML = '&#9654;'; // play icon: tap to resume
+    }
+
+    finishBtn.disabled = recordingState === 'idle';
+    finishBtn.classList.toggle('ready', recordingState !== 'idle');
 
     recBadge.classList.toggle('live', recordingState !== 'idle');
     recBadge.classList.toggle('paused', recordingState === 'paused');
@@ -477,9 +493,10 @@
 
   recMainBtn.addEventListener('click', () => {
     if (recordingState === 'idle') startRecording();
-    else stopRecording();
+    else if (recordingState === 'recording') pauseRecording();
+    else if (recordingState === 'paused') resumeRecording();
   });
-  pauseBtn.addEventListener('click', togglePause);
+  finishBtn.addEventListener('click', finishRecording);
 
   // ---------- Result screen actions ----------
 
