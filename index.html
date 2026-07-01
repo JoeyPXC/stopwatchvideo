@@ -273,6 +273,12 @@
 
   const installBtn = document.getElementById('installBtn');
 
+  function isIOS() {
+    return /iP(hone|od|ad)/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPadOS reports as Mac
+  }
+  if (isIOS()) downloadBtn.textContent = 'Save (via Share Sheet)';
+
   let facingMode = 'environment';
   let cameraStream = null;
   let audioCtx = null;
@@ -584,20 +590,48 @@
 
   // ---------- Result screen actions ----------
 
-  shareBtn.addEventListener('click', async () => {
+  function makeVideoFile() {
     const blob = window.__lastBlob;
-    if (!blob) return;
-    const file = new File([blob], `stopwatch-video-${Date.now()}.webm`, { type: 'video/webm' });
+    if (!blob) return null;
+    return new File([blob], `stopwatch-video-${Date.now()}.webm`, { type: 'video/webm' });
+  }
+
+  async function shareFile() {
+    const file = makeVideoFile();
+    if (!file) return false;
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       try {
         await navigator.share({ files: [file], title: 'Race video' });
-      } catch (e) { /* user cancelled */ }
+        return true;
+      } catch (e) {
+        return false; // user cancelled — not an error
+      }
+    }
+    return false;
+  }
+
+  shareBtn.addEventListener('click', async () => {
+    const file = makeVideoFile();
+    if (!file) return;
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await shareFile();
     } else {
-      downloadBlob();
+      downloadBlob(); // no share support at all on this browser — fall back to a direct download
     }
   });
 
-  downloadBtn.addEventListener('click', downloadBlob);
+  downloadBtn.addEventListener('click', async () => {
+    if (isIOS()) {
+      // iOS Safari doesn't reliably support direct blob downloads for video —
+      // the share sheet (choose "Save Video") is the actual way to save on iPhone/iPad.
+      const shared = await shareFile();
+      if (!shared) {
+        alert('Tap Share instead, then choose "Save Video" to save it to Photos.');
+      }
+      return;
+    }
+    downloadBlob();
+  });
 
   function downloadBlob() {
     const blob = window.__lastBlob;
