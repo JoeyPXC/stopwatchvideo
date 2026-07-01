@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-video-v1';
+const CACHE_NAME = 'stopwatch-video-v2';
 const APP_SHELL = [
   './',
   './index.html',
@@ -24,13 +24,16 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-  // Network-first for navigation so you always get the latest deploy when online;
-  // falls back to the cached app shell if offline (e.g. at a track with no signal).
-  // {cache:'no-store'} forces a real round-trip to the server instead of letting
-  // the browser's own HTTP cache quietly hand back a stale copy of index.html.
-  if (event.request.mode === 'navigate') {
+  const url = new URL(event.request.url);
+  const isAppShellDoc = event.request.mode === 'navigate' || url.pathname.endsWith('/manifest.json');
+
+  // Network-first (and no-store, bypassing the browser's own HTTP cache) for
+  // the page itself and the manifest — both get read directly by the browser's
+  // install/name detection, so they should never be allowed to go stale.
+  // Icons rarely change, so those stay cache-first for speed.
+  if (isAppShellDoc) {
     event.respondWith(
-      fetch(event.request, { cache: 'no-store' }).catch(() => caches.match('./index.html'))
+      fetch(event.request, { cache: 'no-store' }).catch(() => caches.match(event.request))
     );
     return;
   }
