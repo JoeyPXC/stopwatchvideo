@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -161,14 +162,16 @@
     display:none;
     flex-direction:column;
     z-index:40;
+    overflow-y:auto;
   }
   #resultOverlay.show{display:flex;}
   #resultVideoWrap{
     position:relative;
-    flex:1;min-height:0;
     width:100%;
+    height:45vh;
     background:#000;
     overflow:hidden;
+    flex-shrink:0;
   }
   #resultVideoWrap video{
     display:block;
@@ -191,38 +194,116 @@
     transition:opacity .15s ease;
   }
   #bigPlayBtn.hidden{opacity:0;}
-  #resultBar{
-    padding:14px 18px calc(18px + env(safe-area-inset-bottom));
-    display:flex;gap:10px;flex-wrap:wrap;
-    justify-content:center;
-  }
-  #resultBar button{
-    font-family:var(--mono);
-    font-size:13px;letter-spacing:.05em;text-transform:uppercase;
-    border:none;border-radius:6px;
-    padding:14px 18px;
-    cursor:pointer;
-  }
-  #shareBtn{background:var(--track-red);color:var(--paper);}
-  #downloadBtn{background:var(--paper);color:var(--ink);}
-  #discardBtn{background:transparent;color:#c9c4b8;border:1px solid #4a4640 !important;}
 
   #frameStepBar{
-    padding:10px 18px;
-    display:flex;gap:10px;justify-content:center;
+    padding:8px 14px;
+    display:flex;gap:6px;justify-content:center;flex-wrap:wrap;
     background:var(--ink);
+    border-bottom:1px solid #2c2a27;
   }
   .frameBtn{
     font-family:var(--mono);
-    font-size:13px;letter-spacing:.03em;text-transform:uppercase;
+    font-size:11px;
     background:transparent;
     color:var(--paper);
-    border:1px solid rgba(244,241,234,.4);
-    border-radius:20px;
-    padding:10px 18px;
+    border:1px solid rgba(244,241,234,.3);
+    border-radius:16px;
+    padding:6px 12px;
     cursor:pointer;
   }
-  .frameBtn:active{background:var(--track-red);border-color:var(--track-red);}
+  .frameBtn:active, .frameBtn.activeSpeed{background:var(--track-red);border-color:var(--track-red);}
+
+  /* Data & Results Section */
+  #resultsDataContainer {
+    flex:1;
+    padding:14px;
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+    background:#1c1b18;
+  }
+  #markingRow {
+    display:flex;
+    gap:10px;
+    justify-content:center;
+  }
+  #markFinisherBtn {
+    flex:1;
+    background:#2f9e44;
+    color:#fff;
+    border:none;
+    font-family:var(--mono);
+    font-size:14px;
+    font-weight:bold;
+    text-transform:uppercase;
+    padding:12px;
+    border-radius:6px;
+    cursor:pointer;
+  }
+  #markFinisherBtn:active { background:#247a35; }
+  
+  #syncVideoBtn {
+    background:rgba(0,0,0,0.4);
+    color:var(--paper);
+    border:1px solid rgba(244,241,234,.4);
+    font-family:var(--mono);
+    font-size:13px;
+    padding:12px 16px;
+    border-radius:6px;
+    cursor:pointer;
+  }
+  #syncVideoBtn.has-offset {
+    background:#f59f00;
+    color:#000;
+    border-color:#f59f00;
+  }
+
+  #tableWrapper {
+    flex:1;
+    max-height:220px;
+    overflow-y:auto;
+    border:1px solid #383530;
+    border-radius:6px;
+    background:var(--ink);
+  }
+  table {
+    width:100%;
+    border-collapse:collapse;
+    font-size:13px;
+    text-align:left;
+  }
+  th, td {
+    padding:8px 12px;
+    border-bottom:1px solid #2c2a27;
+  }
+  th { background:#22211e; color:#c9c4b8; font-weight:normal; }
+  .deleteRowBtn {
+    background:transparent;
+    color:var(--track-red);
+    border:none;
+    cursor:pointer;
+    font-size:14px;
+    padding:0 4px;
+  }
+
+  #resultBar{
+    padding:10px 14px calc(14px + env(safe-area-inset-bottom));
+    display:flex;gap:8px;flex-wrap:wrap;
+    justify-content:center;
+    background:var(--ink);
+    border-top:1px solid #2c2a27;
+  }
+  #resultBar button{
+    font-family:var(--mono);
+    font-size:12px;letter-spacing:.03em;text-transform:uppercase;
+    border:none;border-radius:6px;
+    padding:10px 14px;
+    cursor:pointer;
+  }
+  #exportCsvBtn{background:#1c7ed6;color:#fff;}
+  #shareBtn{background:var(--track-red);color:var(--paper);}
+  #downloadBtn{background:var(--paper);color:var(--ink);}
+  #discardBtn{background:transparent;color:#c9c4b8;border:1px solid #4a4640 !important;}
 
   #zoomIndicator{
     position:fixed;
@@ -267,6 +348,14 @@
     z-index:15;
     pointer-events:none;
   }
+  
+  /* Upload Trigger UI */
+  #importBtnRow {
+    position:absolute;
+    top:calc(12px + env(safe-area-inset-top));
+    left:14px;
+    z-index:25;
+  }
 </style>
 </head>
 <body>
@@ -285,15 +374,20 @@
   <p id="permError" style="color:#e78a8e;margin-top:16px;"></p>
 </div>
 
+<div id="importBtnRow">
+  <button id="loadVideoBtn" class="pillBtn" style="font-size:11px; padding:6px 12px; background:rgba(0,0,0,0.65);">Review Saved Video</button>
+  <input type="file" id="videoFileInput" accept="video/*" style="display:none;">
+</div>
+
 <div id="topBar">
-  <button id="flipBtn" class="iconBtn" title="Flip camera">&#8635;</button>
+  <div style="width:130px;"></div> 
   <div id="recBadge"><span id="recDot"></span><span id="recLabel">REC</span></div>
-  <div style="width:44px;"></div>
+  <button id="flipBtn" class="iconBtn" title="Flip camera">&#8635;</button>
 </div>
 
 <div id="zoomIndicator"></div>
 
-<div id="versionTag">v9-persistent</div>
+<div id="versionTag">v14-on-demand-sync</div>
 
 <div id="bottomBar">
   <div id="clockRow">
@@ -314,12 +408,36 @@
     <div id="bigPlayBtn">&#9654;</div>
   </div>
   <div id="frameStepBar">
-    <button id="back5Btn" class="frameBtn">&#171;5</button><button id="prevFrameBtn" class="frameBtn">&#9664;1</button><button id="nextFrameBtn" class="frameBtn">1&#9654;</button><button id="fwd5Btn" class="frameBtn">5&#187;</button><br><button class="frameBtn speed" data-speed="0.1">0.1x</button><button class="frameBtn speed" data-speed="0.25">0.25x</button><button class="frameBtn speed" data-speed="0.5">0.5x</button><button class="frameBtn speed" data-speed="1">1x</button>
+    <button id="back5Btn" class="frameBtn">&#171;5</button><button id="prevFrameBtn" class="frameBtn">&#9664;1</button><button id="nextFrameBtn" class="frameBtn">1&#9654;</button><button id="fwd5Btn" class="frameBtn">5&#187;</button>
+    <span style="color:rgba(244,241,234,.3);padding:0 4px;">|</span>
+    <button class="frameBtn speed activeSpeed" data-speed="1">1x</button><button class="frameBtn speed" data-speed="0.5">0.5x</button><button class="frameBtn speed" data-speed="0.25">0.25x</button><button class="frameBtn speed" data-speed="0.1">0.1x</button>
   </div>
+
+  <div id="resultsDataContainer">
+    <div id="markingRow">
+      <button id="syncVideoBtn" title="Calibrate video clock timeline">Sync Clock: 0.00</button>
+      <button id="markFinisherBtn">Mark Finisher (Space)</button>
+    </div>
+    <div id="tableWrapper">
+      <table id="resultsTable">
+        <thead>
+          <tr>
+            <th style="width: 60px;">Place</th>
+            <th>True Race Time</th>
+            <th style="width: 40px; text-align: center;"></th>
+          </tr>
+        </thead>
+        <tbody id="resultsBody">
+          </tbody>
+      </table>
+    </div>
+  </div>
+
   <div id="resultBar">
-    <button id="shareBtn">Share</button>
-    <button id="downloadBtn">Save to device</button>
-    <button id="discardBtn">Discard &amp; record again</button>
+    <button id="exportCsvBtn">Export CSV</button>
+    <button id="shareBtn">Share Video</button>
+    <button id="downloadBtn">Save Video</button>
+    <button id="discardBtn">Discard</button>
   </div>
 </div>
 
@@ -347,6 +465,9 @@
   const recIcon = document.getElementById('recIcon');
   const finishBtn = document.getElementById('finishBtn');
 
+  const loadVideoBtn = document.getElementById('loadVideoBtn');
+  const videoFileInput = document.getElementById('videoFileInput');
+
   const resultOverlay = document.getElementById('resultOverlay');
   const resultVideo = document.getElementById('resultVideo');
   const resultVideoWrap = document.getElementById('resultVideoWrap');
@@ -355,6 +476,10 @@
   const shareBtn = document.getElementById('shareBtn');
   const downloadBtn = document.getElementById('downloadBtn');
   const discardBtn = document.getElementById('discardBtn');
+  const markFinisherBtn = document.getElementById('markFinisherBtn');
+  const syncVideoBtn = document.getElementById('syncVideoBtn');
+  const resultsBody = document.getElementById('resultsBody');
+  const exportCsvBtn = document.getElementById('exportCsvBtn');
 
   const installBtn = document.getElementById('installBtn');
 
@@ -362,7 +487,7 @@
     return /iP(hone|od|ad)/.test(navigator.userAgent) ||
       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   }
-  if (isIOS()) downloadBtn.textContent = 'Save (via Share Sheet)';
+  if (isIOS()) downloadBtn.textContent = 'Save Video';
 
   let facingMode = 'environment';
   let cameraStream = null;
@@ -372,10 +497,10 @@
   let audioCtx = null;
   let limitedAudioTrack = null;
 
-  // Persistent background stopwatch state variables using wall-clock time tracking
+  // Persistent stopwatch variables using wall-clock time tracking
   let clockRunning = false;
   let clockElapsedMs = 0;
-  let clockStartPerf = 0; // Tracks Unix epoch time via Date.now() when running
+  let clockStartPerf = 0; 
   let lastLapMarkMs = 0; 
   let lapUsed = false;   
 
@@ -386,6 +511,12 @@
   let recordingActiveMs = 0;      
   let activeSegmentStart = 0;     
   let lastRecordingDurationMs = 0;
+  
+  // Timeline tracking variables
+  let videoTimelineMap = [];
+  let finishersList = [];
+  let isImportedVideoMode = false;
+  let currentSyncLabelString = "0.00";
 
   function currentActiveDurationMs() {
     return recordingActiveMs + (recordingState === 'recording' ? performance.now() - activeSegmentStart : 0);
@@ -408,7 +539,6 @@
       limiter.release.setValueAtTime(0.2, audioCtx.currentTime);
       const dest = audioCtx.createMediaStreamDestination();
       source.connect(limiter).connect(dest);
-
       audioCtx.resume().catch(() => {});
       return dest.stream.getAudioTracks()[0] || rawTrack;
     } catch (e) {
@@ -441,7 +571,6 @@
       });
       cameraStream = stream;
       limitedAudioTrack = buildLimitedAudioTrack(stream.getAudioTracks()[0] || null);
-
       zoomTrack = stream.getVideoTracks()[0] || null;
       digitalZoomFactor = 1;
       zoomCaps = null;
@@ -490,7 +619,7 @@
   window.addEventListener('orientationchange', handleOrientationChange);
   window.addEventListener('resize', handleOrientationChange);
 
-  // ---------- Clock ----------
+  // ---------- Clock State & Formatter Logic ----------
 
   function currentClockMs() {
     return clockElapsedMs + (clockRunning ? Date.now() - clockStartPerf : 0);
@@ -501,11 +630,40 @@
   }
 
   function formatClock(ms) {
-    const totalSec = ms / 1000;
+    const isNegative = ms < 0;
+    const absoluteMs = Math.abs(ms);
+    
+    const totalSec = absoluteMs / 1000;
     const m = Math.floor(totalSec / 60);
     const s = totalSec - m * 60;
-    if (m === 0) return s.toFixed(2);
-    return `${m}:${s.toFixed(2).padStart(5, '0')}`;
+    
+    const sign = isNegative ? '-' : '';
+    if (m === 0) return sign + s.toFixed(2);
+    return `${sign}${m}:${s.toFixed(2).padStart(5, '0')}`;
+  }
+
+  function parseClockToMs(inputStr) {
+    if (!inputStr) return 0;
+    inputStr = inputStr.trim();
+    
+    let isNegative = false;
+    if (inputStr.startsWith('-')) {
+      isNegative = true;
+      inputStr = inputStr.substring(1).trim(); 
+    }
+
+    let calculatedMs = 0;
+    if (inputStr.includes(':')) {
+      const parts = inputStr.split(':');
+      const minutes = parseFloat(parts[0]) || 0;
+      const seconds = parseFloat(parts[1]) || 0;
+      calculatedMs = Math.round((minutes * 60 + seconds) * 1000);
+    } else {
+      const seconds = parseFloat(inputStr) || 0;
+      calculatedMs = Math.round(seconds * 1000);
+    }
+
+    return isNegative ? -calculatedMs : calculatedMs;
   }
 
   function startClockNow() {
@@ -515,8 +673,6 @@
     clockBtn.textContent = 'Stop clock';
     clockBtn.classList.add('active');
     resetClockBtn.disabled = true;
-
-    // Save running state to device disk
     localStorage.setItem('stopwatch_running', 'true');
     localStorage.setItem('stopwatch_start_time', clockStartPerf - clockElapsedMs);
   }
@@ -528,8 +684,6 @@
     clockBtn.textContent = 'Start clock';
     clockBtn.classList.remove('active');
     resetClockBtn.disabled = false;
-
-    // Update saved state on device disk
     localStorage.setItem('stopwatch_running', 'false');
     localStorage.setItem('stopwatch_elapsed', clockElapsedMs);
   }
@@ -686,7 +840,73 @@
     }
   }
 
-  // ---------- Recording ----------
+  // ---------- Recording & File Selection Triggers ----------
+
+  loadVideoBtn.addEventListener('click', () => videoFileInput.click());
+  videoFileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (lastBlobUrl) URL.revokeObjectURL(lastBlobUrl);
+    lastBlobUrl = URL.createObjectURL(file);
+    resultVideo.src = lastBlobUrl;
+    
+    // Default fallback structural map anchor assuming 0.00 base offset
+    videoTimelineMap = [{
+      videoStart: 0,
+      raceStart: 0
+    }];
+    currentSyncLabelString = "0.00";
+    syncVideoBtn.textContent = "Sync Clock: " + currentSyncLabelString;
+    syncVideoBtn.classList.remove('has-offset');
+    
+    isImportedVideoMode = true;
+    finishersList = [];
+    renderResultsTable();
+    
+    shareBtn.style.display = 'none';
+    downloadBtn.style.display = 'none';
+    syncVideoBtn.style.display = 'inline-block';
+
+    resultOverlay.classList.add('show');
+    videoFileInput.value = ''; 
+  });
+
+  // Dedicated Button-Triggered Timeline Sync Alignment System
+  syncVideoBtn.addEventListener('click', () => {
+    resultVideo.pause();
+    const currentVideoTimeFormatted = formatClock(resultVideo.currentTime * 1000);
+    
+    const promptValue = prompt(
+      `Sync Calibration:\nScrub to any reference frame. What should the race time be at this exact spot?\n\nCurrently viewed video timestamp: ${currentVideoTimeFormatted}\n\n(Examples: 14.20, 1:05.45, or negative times like -1:00 if the video started before the clock)`,
+      currentSyncLabelString
+    );
+    
+    if (promptValue === null) return; 
+    
+    const targetRaceMs = parseClockToMs(promptValue);
+    const currentVideoMs = resultVideo.currentTime * 1000;
+    
+    // Recalibrate zero timeline index backwards relative to the selected reference point
+    const calculatedBaseMs = targetRaceMs - currentVideoMs;
+    
+    videoTimelineMap = [{
+      videoStart: 0,
+      raceStart: calculatedBaseMs
+    }];
+    
+    currentSyncLabelString = promptValue.trim();
+    syncVideoBtn.textContent = "Synced @ " + currentSyncLabelString;
+    syncVideoBtn.classList.add('has-offset');
+    
+    // Clear previously entered split lines since the underlying math map modified
+    if (finishersList.length > 0) {
+      if (confirm("Recalibrating the clock changes the math timeline. Clear previously marked splits?")) {
+        finishersList = [];
+        renderResultsTable();
+      }
+    }
+  });
 
   function pickMimeType() {
     const candidates = [
@@ -746,6 +966,12 @@
       recordingActiveMs = 0;
       activeSegmentStart = performance.now();
       recordingState = 'recording';
+      
+      videoTimelineMap = [{
+        videoStart: 0,
+        raceStart: currentClockMs()
+      }];
+
       updateRecUI();
     }, 200);
   }
@@ -763,6 +989,12 @@
     recorder.resume();
     activeSegmentStart = performance.now();
     recordingState = 'recording';
+    
+    videoTimelineMap.push({
+      videoStart: recordingActiveMs,
+      raceStart: currentClockMs()
+    });
+
     updateRecUI();
   }
 
@@ -805,6 +1037,15 @@
       if (lastBlobUrl) URL.revokeObjectURL(lastBlobUrl);
       lastBlobUrl = URL.createObjectURL(blob);
       resultVideo.src = lastBlobUrl;
+      
+      isImportedVideoMode = false;
+      finishersList = [];
+      renderResultsTable();
+
+      shareBtn.style.display = 'inline-block';
+      downloadBtn.style.display = 'inline-block';
+      syncVideoBtn.style.display = 'none';
+
       resultOverlay.classList.add('show');
       window.__lastBlob = blob;
     };
@@ -829,7 +1070,7 @@
   });
   finishBtn.addEventListener('click', finishRecording);
 
-  // ---------- Result screen actions ----------
+  // ---------- Review Screen Actions & Translation Core ----------
 
   let FRAME_STEP_SEC=1/60;
   function stepResultFrame(direction) {
@@ -839,7 +1080,101 @@
     resultVideo.currentTime = Math.max(0, Math.min(resultVideo.duration, t));
   }
   prevFrameBtn.addEventListener('click', () => stepResultFrame(-1));
-  nextFrameBtn.addEventListener('click',()=>stepResultFrame(1));back5Btn.addEventListener('click',()=>stepResultFrame(-5));fwd5Btn.addEventListener('click',()=>stepResultFrame(5));document.querySelectorAll('.speed').forEach(b=>b.onclick=()=>{resultVideo.playbackRate=parseFloat(b.dataset.speed);});
+  nextFrameBtn.addEventListener('click',()=>stepResultFrame(1));back5Btn.addEventListener('click',()=>stepResultFrame(-5));fwd5Btn.addEventListener('click',()=>stepResultFrame(5));
+  
+  document.querySelectorAll('.speed').forEach(b=>{
+    b.onclick=()=>{
+      document.querySelectorAll('.speed').forEach(btn => btn.classList.remove('activeSpeed'));
+      b.classList.add('activeSpeed');
+      resultVideo.playbackRate=parseFloat(b.dataset.speed);
+    };
+  });
+
+  function markCurrentFinisher() {
+    if (!isFinite(resultVideo.duration)) return;
+    
+    const videoOffsetMs = resultVideo.currentTime * 1000;
+    
+    let matchingSegment = videoTimelineMap[0] || { videoStart: 0, raceStart: 0 };
+    for (let i = 0; i < videoTimelineMap.length; i++) {
+      if (videoOffsetMs >= videoTimelineMap[i].videoStart) {
+        matchingSegment = videoTimelineMap[i];
+      }
+    }
+    
+    const elapsedInSegment = videoOffsetMs - matchingSegment.videoStart;
+    const calculatedRaceMs = matchingSegment.raceStart + elapsedInSegment;
+    const formattedTime = formatClock(calculatedRaceMs);
+    
+    finishersList.push(formattedTime);
+    renderResultsTable();
+  }
+
+  function renderResultsTable() {
+    resultsBody.innerHTML = '';
+    finishersList.forEach((timeStr, idx) => {
+      const tr = document.createElement('tr');
+      
+      const tdPlace = document.createElement('td');
+      tdPlace.textContent = idx + 1;
+      
+      const tdTime = document.createElement('td');
+      tdTime.style.fontWeight = 'bold';
+      tdTime.textContent = timeStr;
+      
+      const tdAction = document.createElement('td');
+      tdAction.style.textAlign = 'center';
+      const delBtn = document.createElement('button');
+      delBtn.className = 'deleteRowBtn';
+      delBtn.innerHTML = '&times;';
+      delBtn.title = 'Remove split';
+      delBtn.onclick = () => {
+        finishersList.splice(idx, 1);
+        renderResultsTable();
+      };
+      tdAction.appendChild(delBtn);
+      
+      tr.appendChild(tdPlace);
+      tr.appendChild(tdTime);
+      tr.appendChild(tdAction);
+      resultsBody.appendChild(tr);
+    });
+  }
+
+  markFinisherBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    markCurrentFinisher();
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (resultOverlay.classList.contains('show') && e.code === 'Space') {
+      e.preventDefault();
+      markCurrentFinisher();
+    }
+  });
+
+  exportCsvBtn.addEventListener('click', () => {
+    if (finishersList.length === 0) {
+      alert('No finishers marked yet. Scrub through the video and tap "Mark Finisher" to build your sheet.');
+      return;
+    }
+    
+    let csvContent = 'Place,True Race Time\n';
+    finishersList.forEach((timeStr, idx) => {
+      csvContent += `${idx + 1},${timeStr}\n`;
+    });
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `race-results-${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  });
+
+  // ---------- Video Player Scrubbing Logic ----------
 
   const DRAG_SECONDS_PER_PIXEL = 0.012; 
   const TAP_MOVE_THRESHOLD = 6; 
@@ -951,15 +1286,22 @@
   }
 
   discardBtn.addEventListener('click', () => {
-    if (confirm('Are you sure you want to discard this video? It will be permanently removed.')) {
+    const confMessage = isImportedVideoMode 
+      ? 'Are you sure you want to exit review mode? Your current data selections will be lost.'
+      : 'Are you sure you want to discard this video and your results data?';
+      
+    if (confirm(confMessage)) {
       resultOverlay.classList.remove('show');
       resultVideo.pause();
       resultVideo.removeAttribute('src');
       recordedChunks = [];
+      finishersList = [];
+      videoTimelineMap = [];
+      renderResultsTable();
     }
   });
 
-  // ---------- PWA install prompt ----------
+  // ---------- PWA deployment installations ----------
 
   let deferredPrompt = null;
   window.addEventListener('beforeinstallprompt', e => {
@@ -981,7 +1323,6 @@
     });
   }
 
-  // Restore saved stopwatch state on app lifecycle boots
   loadClockFromStorage();
   updateRecUI();
 })();
