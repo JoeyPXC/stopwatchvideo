@@ -950,27 +950,96 @@
     scrubIndicatorTimer = setTimeout(() => scrubIndicator.classList.remove('show'), 800);
   }
 
-  // Velocity-aware scrub: slow drag = frame by frame, fast drag = big jumps
-  let sX=0, sT=0, sM=false, sLastX=0, sLastT=0, sVel=0, sLastFrame=-1;
+  // Review canvas zoom state
+  let reviewZoom = 1;
+  let reviewPanX = 0;
+  let reviewPanY = 0;
+
+  function applyReviewTransform() {
+    resultCanvas.style.transform = `scale(${reviewZoom}) translate(${reviewPanX}px, ${reviewPanY}px)`;
+    resultCanvas.style.transformOrigin = 'center center';
+  }
+
+  function resetReviewZoom() {
+    reviewZoom = 1; reviewPanX = 0; reviewPanY = 0;
+    applyReviewTransform();
+  }
+
+  // Double-tap to reset zoom
+  let lastTap = 0;
+  resultDisplayContainer.addEventListener('touchend', e => {
+    const now = Date.now();
+    if (now - lastTap < 300 && e.touches.length === 0) {
+      if (reviewZoom > 1) { resetReviewZoom(); return; }
+    }
+    lastTap = now;
+    if (!sM && e.changedTouches.length === 1 && !pinchInProgress) toggleVideoPlayback();
+  });
+
+  // Velocity-aware scrub + pinch zoom
+  let sX=0, sT=0, sM=false, sLastX=0, sLastY=0, sLastT=0, sVel=0, sLastFrame=-1;
+  let pinchInProgress = false;
+  let pinchStartDist2 = 0, pinchStartZoom = 1;
+  let pinchMidX = 0, pinchMidY = 0;
   const FPS_STEP = 1/60;
 
   resultDisplayContainer.addEventListener('touchstart', e => {
+    if (e.touches.length === 2) {
+      pinchInProgress = true;
+      pinchStartDist2 = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      pinchStartZoom = reviewZoom;
+      pinchMidX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      pinchMidY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      return;
+    }
+    pinchInProgress = false;
     sX = e.touches[0].clientX;
     sLastX = sX;
+    sLastY = e.touches[0].clientY;
     sT = resultVideo.currentTime;
     sLastT = performance.now();
     sM = false; sVel = 0; sLastFrame = -1;
   }, { passive: true });
 
   resultDisplayContainer.addEventListener('touchmove', e => {
+    e.preventDefault();
+
+    if (e.touches.length === 2) {
+      pinchInProgress = true;
+      const dist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      reviewZoom = Math.min(8, Math.max(1, pinchStartZoom * (dist / pinchStartDist2)));
+      applyReviewTransform();
+
+      // Show zoom level
+      showScrubIndicator(reviewZoom.toFixed(1) + 'x');
+      return;
+    }
+
+    if (pinchInProgress) return;
+
+    // If zoomed in, single finger pans
+    if (reviewZoom > 1) {
+      reviewPanX += (e.touches[0].clientX - sLastX) / reviewZoom;
+      reviewPanY += (e.touches[0].clientY - sLastY) / reviewZoom;
+      sLastX = e.touches[0].clientX;
+      sLastY = e.touches[0].clientY;
+      applyReviewTransform();
+      return;
+    }
+
     const x = e.touches[0].clientX;
     const dx = x - sX;
     const now = performance.now();
     const dt = now - sLastT || 16;
 
-    // Instantaneous velocity in px/ms
     const instVel = (x - sLastX) / dt;
-    sVel = sVel * 0.6 + instVel * 0.4; // smoothed
+    sVel = sVel * 0.6 + instVel * 0.4;
     sLastX = x; sLastT = now;
 
     if (Math.abs(dx) > 6) sM = true;
@@ -978,28 +1047,25 @@
 
     resultVideo.pause();
 
-    // Speed scaling: |vel| < 0.3 px/ms → frame by frame; ramps up to ~5s/s at fast swipe
     const speed = Math.abs(sVel);
     let seekDelta;
     if (speed < 0.15) {
-      // Ultra slow — snap to nearest frame boundary only when crossing one
       const targetFrame = Math.round((sT + dx * FPS_STEP * 0.5) / FPS_STEP);
       if (targetFrame !== sLastFrame) {
         seekDelta = targetFrame * FPS_STEP - resultVideo.currentTime;
         sLastFrame = targetFrame;
       } else { return; }
     } else if (speed < 0.5) {
-      seekDelta = dx * 0.008; // ~frame per 2px
+      seekDelta = dx * 0.008;
     } else if (speed < 1.5) {
-      seekDelta = dx * 0.03;  // medium
+      seekDelta = dx * 0.03;
     } else {
-      seekDelta = dx * 0.08;  // fast scrub
+      seekDelta = dx * 0.08;
     }
 
     const newTime = Math.max(0, Math.min(resultVideo.duration, sT + (seekDelta !== undefined ? seekDelta : dx * 0.012)));
     resultVideo.currentTime = newTime;
 
-    // Show indicator
     const frameDelta = Math.round((newTime - sT) / FPS_STEP);
     let label;
     if (Math.abs(frameDelta) <= 2 && speed < 0.5) {
@@ -1011,7 +1077,6 @@
     showScrubIndicator(label);
   }, { passive: false });
 
-  resultDisplayContainer.addEventListener('touchend', () => { if(!sM) { toggleVideoPlayback(); } });
   resultDisplayContainer.addEventListener('click', (e) => { if(!sM && e.target === resultCanvas) { toggleVideoPlayback(); } });
   inlinePlayPauseBtn.addEventListener('click', toggleVideoPlayback);
 
@@ -1174,6 +1239,7 @@
       resultVideo.src = '';
       finishersList=[]; videoTimelineMap=[];
       isImportedVideoMode = false; isVideoSynced = false;
+      resetReviewZoom();
       saveClock();
       if (!cameraStream) {
         // Camera was killed by external video upload — restart it
