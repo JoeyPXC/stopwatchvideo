@@ -425,8 +425,9 @@
       <table id="resultsTable">
         <thead>
           <tr>
-            <th style="width: 60px;">Place</th>
-            <th>Time</th>
+            <th style="width: 50px;">Place</th>
+            <th style="width: 80px;">Time</th>
+            <th>Notes</th>
             <th style="width: 40px; text-align: center;"></th>
           </tr>
         </thead>
@@ -509,11 +510,11 @@
       localStorage.setItem(LS_KEY, JSON.stringify({
         running: clockRunning,
         elapsedMs: clockElapsedMs,
-        // Store real wall-clock start so time is correct after app switch/call
         wallStart: clockRunning ? Date.now() - clockElapsedMs : null,
         lastLapMarkMs,
         lapUsed,
-        finishersList
+        finishersList,
+        savedAt: Date.now()
       }));
     } catch(e) {}
   }
@@ -521,11 +522,15 @@
     try {
       const saved = JSON.parse(localStorage.getItem(LS_KEY));
       if (!saved) return;
+      // Expire after 1 hour of inactivity
+      if (saved.savedAt && (Date.now() - saved.savedAt) > 60 * 60 * 1000) {
+        localStorage.removeItem(LS_KEY);
+        return;
+      }
       finishersList = saved.finishersList || [];
       lastLapMarkMs = saved.lastLapMarkMs || 0;
       lapUsed = saved.lapUsed || false;
       if (saved.running && saved.wallStart) {
-        // Clock was running when we left — calculate true elapsed from wall time
         clockElapsedMs = Date.now() - saved.wallStart;
         clockStartPerf = Date.now();
         clockRunning = true;
@@ -799,6 +804,7 @@
   
   videoFileInput.addEventListener('change', (e) => {
     const file = e.target.files[0]; if (!file) return;
+    uploadedVideoName = file.name;
     if (lastBlobUrl) URL.revokeObjectURL(lastBlobUrl);
     lastBlobUrl = URL.createObjectURL(file);
 
@@ -1004,19 +1010,36 @@
     }
   }
 
+  let uploadedVideoName = '';
+
   function markCurrentFinisher() {
     const calculatedMs = getCalculatedRaceTimeMs();
-    finishersList.push(formatClock(calculatedMs));
+    finishersList.push({ time: formatClock(Math.max(0, calculatedMs)), note: '' });
     renderResultsTable();
     saveClock();
   }
 
   function renderResultsTable() {
     resultsBody.innerHTML = '';
-    finishersList.forEach((t, i) => {
+    finishersList.forEach((entry, i) => {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${i+1}</td><td style="font-weight:bold;">${t}</td><td style="text-align:center;"><button class="deleteRowBtn">&times;</button></td>`;
-      tr.querySelector('.deleteRowBtn').onclick = () => { finishersList.splice(i,1); renderResultsTable(); saveClock(); };
+      tr.innerHTML = `
+        <td>${i + 1}</td>
+        <td style="font-weight:bold;white-space:nowrap;">${entry.time}</td>
+        <td><input type="text" value="${entry.note || ''}" placeholder="add note…"
+          style="width:100%;background:transparent;border:none;border-bottom:1px solid #444;
+          color:var(--paper);font-family:var(--mono);font-size:12px;padding:2px 4px;outline:none;"
+        /></td>
+        <td style="text-align:center;"><button class="deleteRowBtn">&times;</button></td>`;
+      tr.querySelector('input').addEventListener('change', e => {
+        finishersList[i].note = e.target.value;
+        saveClock();
+      });
+      tr.querySelector('.deleteRowBtn').onclick = () => {
+        finishersList.splice(i, 1);
+        renderResultsTable();
+        saveClock();
+      };
       resultsBody.appendChild(tr);
     });
   }
@@ -1026,14 +1049,18 @@
 
   exportCsvBtn.onclick = () => {
     let desiredName = prompt("Enter a name for your CSV file:", `results-${Date.now()}`);
-    if (desiredName === null) return; 
+    if (desiredName === null) return;
     desiredName = desiredName.trim() || `results-${Date.now()}`;
     const cleanFilename = desiredName.replace(/[^a-z0-9_\-\(\)]/gi, '_');
-    let csv = 'Place,Time\n'; 
-    finishersList.forEach((t, i) => csv += `${i+1},${t}\n`);
-    const link = document.createElement('a'); 
+    const now = new Date();
+    const exportedAt = now.toLocaleDateString() + ' ' + now.toLocaleTimeString();
+    let csv = `Exported,${exportedAt}\n`;
+    if (uploadedVideoName) csv += `Video,${uploadedVideoName}\n`;
+    csv += '\nPlace,Time,Notes\n';
+    finishersList.forEach((entry, i) => csv += `${i + 1},${entry.time},"${(entry.note||'').replace(/"/g,'""')}"\n`);
+    const link = document.createElement('a');
     link.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
-    link.download = cleanFilename.endsWith('.csv') ? cleanFilename : `${cleanFilename}.csv`; 
+    link.download = cleanFilename.endsWith('.csv') ? cleanFilename : `${cleanFilename}.csv`;
     link.click();
   };
 
