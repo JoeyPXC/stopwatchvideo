@@ -229,6 +229,32 @@
     }
   }
 
+  #progressBarContainer {
+    position:relative;
+    width:100%;
+    height:28px;
+    background:#0a0908;
+    cursor:pointer;
+    flex-shrink:0;
+    display:flex;
+    align-items:center;
+  }
+  #progressBarFill {
+    height:4px;
+    background:var(--track-red);
+    width:0%;
+    pointer-events:none;
+    transition:width 0.1s linear;
+  }
+  #progressTimeLabel {
+    position:absolute;
+    right:8px;
+    font-size:11px;
+    color:rgba(244,241,234,.5);
+    font-family:var(--mono);
+    pointer-events:none;
+  }
+
   #frameStepBar{
     padding:10px 14px;
     display:flex;gap:8px;justify-content:center;align-items:center;flex-wrap:wrap;
@@ -431,6 +457,10 @@
       <video id="resultVideo" playsinline muted preload="auto" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;visibility:hidden;"></video>
       <canvas id="resultCanvas"></canvas>
       <div id="scrubIndicator"></div>
+    </div>
+    <div id="progressBarContainer">
+      <div id="progressBarFill"></div>
+      <div id="progressTimeLabel"></div>
     </div>
     <div id="frameStepBar">
       <button id="inlinePlayPauseBtn" class="frameBtn">PLAY</button>
@@ -830,8 +860,40 @@
     }
   }
 
-  resultVideo.addEventListener('timeupdate', drawReviewFrame);
-  resultVideo.addEventListener('seeked', drawReviewFrame);
+  const progressBarContainer = document.getElementById('progressBarContainer');
+  const progressBarFill = document.getElementById('progressBarFill');
+  const progressTimeLabel = document.getElementById('progressTimeLabel');
+
+  function updateProgressBar() {
+    if (!resultVideo.duration) return;
+    const pct = (resultVideo.currentTime / resultVideo.duration) * 100;
+    progressBarFill.style.width = pct + '%';
+    // Show current time / total
+    const fmt = s => {
+      const m = Math.floor(s / 60);
+      const sec = (s - m * 60).toFixed(1).padStart(4, '0');
+      return m > 0 ? `${m}:${sec}` : sec + 's';
+    };
+    progressTimeLabel.textContent = fmt(resultVideo.currentTime) + ' / ' + fmt(resultVideo.duration);
+  }
+
+  // Tap or drag on progress bar to seek
+  function seekFromProgressEvent(e) {
+    const rect = progressBarContainer.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    resultVideo.currentTime = pct * resultVideo.duration;
+    updateProgressBar();
+  }
+  progressBarContainer.addEventListener('click', seekFromProgressEvent);
+  progressBarContainer.addEventListener('touchstart', seekFromProgressEvent, { passive: true });
+  progressBarContainer.addEventListener('touchmove', e => {
+    e.stopPropagation();
+    seekFromProgressEvent(e);
+  }, { passive: true });
+
+  resultVideo.addEventListener('timeupdate', () => { drawReviewFrame(); updateProgressBar(); });
+  resultVideo.addEventListener('seeked', () => { drawReviewFrame(); updateProgressBar(); });
   
   resultVideo.addEventListener('play', () => {
     inlinePlayPauseBtn.textContent = 'PAUSE';
