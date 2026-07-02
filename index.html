@@ -25,7 +25,7 @@
     overflow:hidden;
     font-family:var(--mono);
     color:var(--paper);
-    user-select: none; /* Prevents random red/text highlights when clicking rapidly */
+    user-select: none;
     -webkit-user-select: none;
   }
   #stage{
@@ -190,40 +190,33 @@
     overflow-y:auto;
   }
   #resultOverlay.show{display:flex;}
-  #resultVideoWrap{
+  
+  #resultDisplayContainer {
     position:relative;
     width:100%;
-    height:45vh;
+    /* Let the container grow to fit the canvas naturally — no fixed height that clips */
+    max-height:55vh;
     background:#000;
     overflow:hidden;
     flex-shrink:0;
-    cursor: pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
   }
-  #resultVideoWrap video{
+  #resultCanvas {
     display:block;
-    width:100%;height:100%;
+    /* Scale to fit the container without ever overflowing */
+    max-width:100%;
+    max-height:55vh;
+    width:auto;
+    height:auto;
+    /* Ensure the canvas is never taller than what the container can show */
     object-fit:contain;
-    pointer-events: none; /* Let track/swipes fall cleanly to container script */
   }
-  #bigPlayBtn{
-    position:absolute;
-    top:50%;left:50%;
-    transform:translate(-50%,-50%);
-    width:76px;height:76px;
-    border-radius:50%;
-    background:rgba(0,0,0,.65);
-    color:var(--paper);
-    display:flex;align-items:center;justify-content:center;
-    font-size:28px;
-    padding-left:6px;
-    pointer-events:none; /* Clicks bypass the graphic entirely */
-    transition:opacity .15s ease, transform 0.1s ease;
-  }
-  #bigPlayBtn.hidden{opacity:0; transform: translate(-50%, -50%) scale(0.85); pointer-events: none;}
 
   #frameStepBar{
-    padding:8px 14px;
-    display:flex;gap:6px;justify-content:center;flex-wrap:wrap;
+    padding:10px 14px;
+    display:flex;gap:8px;justify-content:center;align-items:center;flex-wrap:wrap;
     background:var(--ink);
     border-bottom:1px solid #2c2a27;
   }
@@ -238,6 +231,13 @@
     cursor:pointer;
   }
   .frameBtn:active, .frameBtn.activeSpeed{background:var(--track-red);border-color:var(--track-red);}
+  
+  #inlinePlayPauseBtn {
+    background: var(--paper);
+    color: var(--ink);
+    font-weight: bold;
+    border-color: var(--paper);
+  }
 
   #resultsDataContainer {
     flex:1;
@@ -253,21 +253,20 @@
     justify-content:center;
     flex-wrap:wrap;
   }
-  #markFinisherBtn {
-    flex:2;
-    min-width:140px;
+  #takeSplitBtn {
+    flex:1.5;
     background:#2f9e44;
     color:#fff;
     border:none;
     font-family:var(--mono);
-    font-size:14px;
+    font-size:13px;
     font-weight:bold;
     text-transform:uppercase;
     padding:12px;
     border-radius:6px;
     cursor:pointer;
   }
-  #markFinisherBtn:active { background:#247a35; }
+  #takeSplitBtn:active { background:#247a35; }
   
   .syncActionBtn {
     flex:1;
@@ -325,7 +324,7 @@
     cursor:pointer;
   }
   #exportCsvBtn{background:#1c7ed6;color:#fff;}
-  #shareBtn{background:var(--track-red);color:var(--paper);}
+  #burnVideoBtn{background:#e03131;color:#fff;font-weight:bold;}
   #downloadBtn{background:var(--paper);color:var(--ink);}
   #discardBtn{background:transparent;color:#c9c4b8;border:1px solid #4a4640 !important;}
 
@@ -373,7 +372,7 @@
 </div>
 
 <div id="importBtnRow">
-  <button id="loadVideoBtn" class="pillBtn" style="font-size:11px; padding:6px 12px; background:rgba(0,0,0,0.65);">Review Saved Video</button>
+  <button id="loadVideoBtn" class="pillBtn" style="font-size:11px; padding:6px 12px; background:rgba(0,0,0,0.65);">Upload External Video</button>
   <input type="file" id="videoFileInput" accept="video/*" style="display:none;">
 </div>
 
@@ -387,7 +386,7 @@
 </div>
 
 <div id="zoomIndicator"></div>
-<div id="versionTag">v20-click-bounds-patch</div>
+<div id="versionTag">v28-zero-lock-until-sync</div>
 
 <div id="bottomBar">
   <div id="clockRow">
@@ -404,13 +403,15 @@
 </div>
 
 <div id="resultOverlay">
-  <div id="resultVideoWrap">
-    <video id="resultVideo" playsinline></video>
-    <div id="bigPlayBtn">&#9654;</div>
+  <div id="resultDisplayContainer">
+    <video id="resultVideo" playsinline muted preload="auto" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;visibility:hidden;"></video>
+    <canvas id="resultCanvas"></canvas>
   </div>
   <div id="frameStepBar">
+    <button id="inlinePlayPauseBtn" class="frameBtn">PLAY</button>
+    <span style="color:rgba(244,241,234,.3);padding:0 2px;">|</span>
     <button id="back5Btn" class="frameBtn">&#171;5</button><button id="prevFrameBtn" class="frameBtn">&#9664;1</button><button id="nextFrameBtn" class="frameBtn">1&#9654;</button><button id="fwd5Btn" class="frameBtn">5&#187;</button>
-    <span style="color:rgba(244,241,234,.3);padding:0 4px;">|</span>
+    <span style="color:rgba(244,241,234,.3);padding:0 2px;">|</span>
     <button id="speed1x" class="frameBtn speed activeSpeed" data-speed="1">1x</button><button id="speedSlow" class="frameBtn speed" data-speed="0.1">0.1x</button>
   </div>
 
@@ -418,14 +419,14 @@
     <div id="markingRow">
       <button id="flashZeroBtn" class="syncActionBtn" title="Set this specific frame as race zero">Set Gun Flash (0.00)</button>
       <button id="syncVideoBtn" class="syncActionBtn">Manual Sync</button>
-      <button id="markFinisherBtn">Mark Finisher (Space)</button>
+      <button id="takeSplitBtn">Take Split</button>
     </div>
     <div id="tableWrapper">
       <table id="resultsTable">
         <thead>
           <tr>
             <th style="width: 60px;">Place</th>
-            <th>True Race Time</th>
+            <th>Time</th>
             <th style="width: 40px; text-align: center;"></th>
           </tr>
         </thead>
@@ -436,8 +437,8 @@
 
   <div id="resultBar">
     <button id="exportCsvBtn">Export CSV</button>
-    <button id="shareBtn">Share Video</button>
-    <button id="downloadBtn">Save Video</button>
+    <button id="burnVideoBtn">Burn & Save Video</button>
+    <button id="downloadBtn" style="display:none;">Download WebM</button>
     <button id="discardBtn">Discard</button>
   </div>
 </div>
@@ -471,18 +472,20 @@
 
   const resultOverlay = document.getElementById('resultOverlay');
   const resultVideo = document.getElementById('resultVideo');
-  const resultVideoWrap = document.getElementById('resultVideoWrap');
-  const bigPlayBtn = document.getElementById('bigPlayBtn');
+  const resultCanvas = document.getElementById('resultCanvas');
+  const rCtx = resultCanvas.getContext('2d');
+  const resultDisplayContainer = document.getElementById('resultDisplayContainer');
+  
+  const inlinePlayPauseBtn = document.getElementById('inlinePlayPauseBtn');
   const prevFrameBtn=document.getElementById('prevFrameBtn');const nextFrameBtn=document.getElementById('nextFrameBtn');const back5Btn=document.getElementById('back5Btn');const fwd5Btn=document.getElementById('fwd5Btn');
-  const shareBtn = document.getElementById('shareBtn');
+  const burnVideoBtn = document.getElementById('burnVideoBtn');
   const downloadBtn = document.getElementById('downloadBtn');
   const discardBtn = document.getElementById('discardBtn');
-  const markFinisherBtn = document.getElementById('markFinisherBtn');
+  const takeSplitBtn = document.getElementById('takeSplitBtn');
   const syncVideoBtn = document.getElementById('syncVideoBtn');
   const flashZeroBtn = document.getElementById('flashZeroBtn');
   const resultsBody = document.getElementById('resultsBody');
   const exportCsvBtn = document.getElementById('exportCsvBtn');
-  const installBtn = document.getElementById('installBtn');
 
   let facingMode = 'environment';
   let cameraStream = null;
@@ -514,7 +517,10 @@
   let videoTimelineMap = [];
   let finishersList = [];
   let isImportedVideoMode = false;
+  let isVideoSynced = false; // Tracks if user has set standard or custom alignment reference
   let currentSyncLabelString = "0.00";
+  let reviewLoopId = null;
+  let drawLoopActive = true;
 
   function currentActiveDurationMs() {
     return recordingActiveMs + (recordingState === 'recording' ? performance.now() - activeSegmentStart : 0);
@@ -581,7 +587,7 @@
 
   async function startCamera() {
     if (!window.isSecureContext) {
-      permError.textContent = 'HTTPS is required for camera and sound processing functionality.';
+      permError.textContent = 'HTTPS is required for functionality.';
       return;
     }
     try {
@@ -626,39 +632,23 @@
 
   audioArmBtn.addEventListener('click', () => {
     if (clockRunning) return;
-    
     if (isAudioArmed) {
-      isAudioArmed = false;
-      isListeningForAudio = false;
-      clearTimeout(armingTimeout);
-      audioArmBtn.classList.remove('armed');
-      audioArmBtn.style.background = '';
-      audioArmBtn.textContent = "Auto-Arm Gun";
+      isAudioArmed = false; isListeningForAudio = false; clearTimeout(armingTimeout);
+      audioArmBtn.classList.remove('armed'); audioArmBtn.style.background = ''; audioArmBtn.textContent = "Auto-Arm Gun";
       return;
     }
-
-    isAudioArmed = true;
-    isListeningForAudio = false; 
-    audioArmBtn.classList.add('armed');
-    audioArmBtn.style.background = '#d9480f';
-    
-    let countdown = 3;
-    audioArmBtn.textContent = `Arming in ${countdown}...`;
-    
+    isAudioArmed = true; isListeningForAudio = false; 
+    audioArmBtn.classList.add('armed'); audioArmBtn.style.background = '#d9480f';
+    let countdown = 3; audioArmBtn.textContent = `Arming in ${countdown}...`;
     const interval = setInterval(() => {
       countdown--;
-      if (countdown > 0 && isAudioArmed) {
-        audioArmBtn.textContent = `Arming in ${countdown}...`;
-      } else {
-        clearInterval(interval);
-      }
+      if (countdown > 0 && isAudioArmed) audioArmBtn.textContent = `Arming in ${countdown}...`;
+      else clearInterval(interval);
     }, 1000);
 
     armingTimeout = setTimeout(() => {
       if (!isAudioArmed) return;
-      isListeningForAudio = true; 
-      audioArmBtn.style.background = '#e67e22'; 
-      audioArmBtn.textContent = "ARMED & LISTENING";
+      isListeningForAudio = true; audioArmBtn.style.background = '#e67e22'; audioArmBtn.textContent = "ARMED & LISTENING";
     }, 3000);
   });
 
@@ -693,27 +683,20 @@
 
   function startClockNow() {
     if (clockRunning) return;
-    clockStartPerf = Date.now();
-    clockRunning = true;
-    clockBtn.textContent = 'Stop clock';
-    clockBtn.classList.add('active');
-    resetClockBtn.disabled = true;
+    clockStartPerf = Date.now(); clockRunning = true;
+    clockBtn.textContent = 'Stop clock'; clockBtn.classList.add('active'); resetClockBtn.disabled = true;
   }
 
   function stopClockNow() {
     if (!clockRunning) return;
-    clockElapsedMs += Date.now() - clockStartPerf;
-    clockRunning = false;
-    clockBtn.textContent = 'Start clock';
-    clockBtn.classList.remove('active');
-    resetClockBtn.disabled = false;
+    clockElapsedMs += Date.now() - clockStartPerf; clockRunning = false;
+    clockBtn.textContent = 'Start clock'; clockBtn.classList.remove('active'); resetClockBtn.disabled = false;
   }
 
   clockBtn.addEventListener('click', () => { if (clockRunning) stopClockNow(); else startClockNow(); });
   resetClockBtn.addEventListener('click', () => {
     if (clockRunning) return;
-    clockElapsedMs = 0; lastLapMarkMs = 0; lapUsed = false;
-    resetClockBtn.disabled = true;
+    clockElapsedMs = 0; lastLapMarkMs = 0; lapUsed = false; resetClockBtn.disabled = true;
   });
   lapBtn.addEventListener('click', () => { lastLapMarkMs = currentClockMs(); lapUsed = true; });
 
@@ -729,8 +712,7 @@
     if (pinchActive && e.touches.length === 2) {
       e.preventDefault();
       const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-      const ratio = dist / pinchStartDist;
-      const target = pinchStartZoomValue * ratio;
+      const ratio = dist / pinchStartDist; const target = pinchStartZoomValue * ratio;
       if (zoomCaps) {
         const clamped = Math.min(zoomCaps.max, Math.max(zoomCaps.min, target));
         zoomTrack.applyConstraints({ advanced: [{ zoom: clamped }] }).catch(() => {});
@@ -745,6 +727,7 @@
   }, { passive: false });
 
   function drawLoop() {
+    if (!drawLoopActive) return;
     if (video.readyState >= 2) {
       if (!zoomCaps && digitalZoomFactor > 1) {
         const sw = video.videoWidth / digitalZoomFactor, sh = video.videoHeight / digitalZoomFactor;
@@ -765,8 +748,7 @@
         const lapTxt = formatClock(currentLapMs());
         ctx.font = `700 ${Math.round(fSize*0.6)}px ui-monospace, monospace`;
         ctx.strokeText(lapTxt, fSize * 0.5, canvas.height - fSize * 1.8);
-        ctx.fillStyle = '#f4f1ea';
-        ctx.fillText(lapTxt, fSize * 0.5, canvas.height - fSize * 1.8);
+        ctx.fillStyle = '#f4f1ea'; ctx.fillText(lapTxt, fSize * 0.5, canvas.height - fSize * 1.8);
       }
     }
     requestAnimationFrame(drawLoop);
@@ -778,45 +760,115 @@
     const file = e.target.files[0]; if (!file) return;
     if (lastBlobUrl) URL.revokeObjectURL(lastBlobUrl);
     lastBlobUrl = URL.createObjectURL(file);
-    
-    resultVideo.pause();
-    resultVideo.src = lastBlobUrl;
-    resultVideo.load();
-    resultVideo.muted = true; 
-    bigPlayBtn.classList.remove('hidden');
-    
-    resultVideo.play().then(() => {
-      resultVideo.pause(); 
-    }).catch(err => console.log("Autoplay context ready."));
 
-    videoTimelineMap = [{ videoStart: 0, raceStart: 0 }];
-    isImportedVideoMode = true; finishersList = []; renderResultsTable();
-    shareBtn.style.display = 'none'; downloadBtn.style.display = 'none'; syncVideoBtn.style.display = 'inline-block';
-    resultOverlay.classList.add('show');
+    // Stop the live camera so it doesn't compete with the uploaded video decode
+    drawLoopActive = false;
+    if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
+    if (audioCtx) { try { audioCtx.close(); } catch(e){} audioCtx = null; }
+    limitedAudioTrack = null;
+
+    resultVideo.pause();
+    inlinePlayPauseBtn.textContent = 'PLAY';
+    resultVideo.src = lastBlobUrl;
+    
+    resultVideo.onloadedmetadata = () => {
+      resultVideo.currentTime = 0;
+      resultCanvas.width = resultVideo.videoWidth || 1280;
+      resultCanvas.height = resultVideo.videoHeight || 720;
+      videoTimelineMap = [];
+      isImportedVideoMode = true; 
+      isVideoSynced = false; // Lock clock presentation to 0.00 until synced
+      finishersList = []; 
+      renderResultsTable();
+      burnVideoBtn.style.display = 'inline-block'; downloadBtn.style.display = 'none'; syncVideoBtn.style.display = 'inline-block';
+      resultOverlay.classList.add('show');
+      drawReviewFrame();
+    };
+    resultVideo.load();
   });
+
+  function startReviewRenderLoop() {
+    if (!reviewLoopId) {
+      const render = () => {
+        drawReviewFrame();
+        if (!resultVideo.paused && !resultVideo.ended) {
+          reviewLoopId = requestAnimationFrame(render);
+        } else {
+          reviewLoopId = null;
+        }
+      };
+      reviewLoopId = requestAnimationFrame(render);
+    }
+  }
+
+  resultVideo.addEventListener('timeupdate', drawReviewFrame);
+  resultVideo.addEventListener('seeked', drawReviewFrame);
+  
+  resultVideo.addEventListener('play', () => {
+    inlinePlayPauseBtn.textContent = 'PAUSE';
+    startReviewRenderLoop();
+  });
+  
+  resultVideo.addEventListener('pause', () => {
+    inlinePlayPauseBtn.textContent = 'PLAY';
+    if (reviewLoopId) {
+      cancelAnimationFrame(reviewLoopId);
+      reviewLoopId = null;
+    }
+    drawReviewFrame();
+  });
+
+  function getCalculatedRaceTimeMs() {
+    // If it's an uploaded external video and hasn't been mapped yet, force 0
+    if (isImportedVideoMode && !isVideoSynced) {
+      return 0;
+    }
+    const vMs = resultVideo.currentTime * 1000;
+    let seg = videoTimelineMap[0] || { videoStart: 0, raceStart: 0 };
+    for (let i = 0; i < videoTimelineMap.length; i++) {
+      if (vMs >= videoTimelineMap[i].videoStart) seg = videoTimelineMap[i];
+    }
+    return seg.raceStart + (vMs - seg.videoStart);
+  }
+
+  function drawReviewFrame() {
+    if (resultVideo.readyState >= 1) {
+      rCtx.drawImage(resultVideo, 0, 0, resultCanvas.width, resultCanvas.height);
+      
+      const fSize = Math.round(resultCanvas.width * 0.045);
+      rCtx.font = `700 ${fSize}px ui-monospace, monospace`;
+      rCtx.lineJoin = 'round'; rCtx.lineWidth = fSize * 0.15; rCtx.strokeStyle = 'rgba(0,0,0,0.8)';
+      
+      const calculatedMs = Math.max(0, getCalculatedRaceTimeMs());
+      const txt = formatClock(calculatedMs);
+      
+      rCtx.strokeText(txt, fSize * 0.5, resultCanvas.height - fSize * 0.5);
+      rCtx.fillStyle = '#f4f1ea';
+      rCtx.fillText(txt, fSize * 0.5, resultCanvas.height - fSize * 0.5);
+    }
+  }
 
   flashZeroBtn.addEventListener('click', () => {
     resultVideo.pause();
-    bigPlayBtn.classList.remove('hidden');
     const currentVideoMs = resultVideo.currentTime * 1000;
     videoTimelineMap = [{ videoStart: currentVideoMs, raceStart: 0 }];
     videoTimelineMap.unshift({ videoStart: 0, raceStart: -currentVideoMs });
     currentSyncLabelString = "0.00 (Flash Checked)";
-    alert(`Clock Zero anchored to this frame! Everything backward from here is now calibrated as a negative countdown.`);
-    if (finishersList.length > 0) {
-      finishersList = [];
-      renderResultsTable();
-    }
+    isVideoSynced = true; // Unlock the timeline calculations
+    alert(`Clock Zero anchored to this frame!`);
+    if (finishersList.length > 0) { finishersList = []; renderResultsTable(); }
+    drawReviewFrame();
   });
 
   syncVideoBtn.addEventListener('click', () => {
     resultVideo.pause();
-    bigPlayBtn.classList.remove('hidden');
     const promptValue = prompt("Manual Sync Entry. Enter actual race clock time seen on screen:", currentSyncLabelString);
     if (promptValue === null) return;
     const targetRaceMs = parseClockToMs(promptValue);
     videoTimelineMap = [{ videoStart: 0, raceStart: targetRaceMs - (resultVideo.currentTime * 1000) }];
     currentSyncLabelString = promptValue.trim();
+    isVideoSynced = true; // Unlock the timeline calculations
+    drawReviewFrame();
   });
 
   function startRecording() {
@@ -830,12 +882,21 @@
         if (lastBlobUrl) URL.revokeObjectURL(lastBlobUrl);
         lastBlobUrl = URL.createObjectURL(blob); 
         resultVideo.src = lastBlobUrl;
-        resultVideo.load();
-        bigPlayBtn.classList.remove('hidden');
         
-        isImportedVideoMode = false; finishersList = []; renderResultsTable();
-        shareBtn.style.display = 'inline-block'; downloadBtn.style.display = 'inline-block'; syncVideoBtn.style.display = 'none';
-        resultOverlay.classList.add('show'); window.__lastBlob = blob;
+        resultVideo.onloadedmetadata = () => {
+          resultVideo.currentTime = 0;
+          resultCanvas.width = resultVideo.videoWidth || 1280;
+          resultCanvas.height = resultVideo.videoHeight || 720;
+          inlinePlayPauseBtn.textContent = 'PLAY';
+          isImportedVideoMode = false; 
+          isVideoSynced = true; // Camera recordings are always auto-synced
+          finishersList = []; 
+          renderResultsTable();
+          burnVideoBtn.style.display = 'none'; downloadBtn.style.display = 'inline-block'; syncVideoBtn.style.display = 'none';
+          resultOverlay.classList.add('show');
+          drawReviewFrame();
+        };
+        resultVideo.load();
       };
       if (window.ysFixWebmDuration && lastRecordingDurationMs > 0) {
         window.ysFixWebmDuration(b, lastRecordingDurationMs, { logger: false }).then(process).catch(()=>process(b));
@@ -864,8 +925,7 @@
 
   let FRAME_STEP_SEC=1/60;
   function step(d) { 
-    resultVideo.pause(); 
-    bigPlayBtn.classList.remove('hidden');
+    resultVideo.pause();
     resultVideo.currentTime = Math.max(0, Math.min(resultVideo.duration, resultVideo.currentTime + d * FRAME_STEP_SEC)); 
   }
   prevFrameBtn.onclick=()=>step(-1); nextFrameBtn.onclick=()=>step(1); back5Btn.onclick=()=>step(-5); fwd5Btn.onclick=()=>step(5);
@@ -877,48 +937,35 @@
     };
   });
   
-  // Clean, unified playback controller on the video window container
   let sX=0, sT=0, sM=false;
-  resultVideoWrap.addEventListener('touchstart', e => { 
+  resultDisplayContainer.addEventListener('touchstart', e => { 
     sX=e.touches[0].clientX; sT=resultVideo.currentTime; sM=false; 
   }, { passive: true });
   
-  resultVideoWrap.addEventListener('touchmove', e => { 
+  resultDisplayContainer.addEventListener('touchmove', e => { 
     const dx=e.touches[0].clientX-sX; 
     if(Math.abs(dx)>6) sM=true; 
     if(sM) { 
-      resultVideo.pause(); 
-      bigPlayBtn.classList.remove('hidden');
+      resultVideo.pause();
       resultVideo.currentTime=Math.max(0,Math.min(resultVideo.duration, sT+dx*0.012)); 
     }
   }, { passive: false });
   
-  resultVideoWrap.addEventListener('touchend', () => { 
-    if(!sM) { toggleVideoPlayback(); }
-  });
-
-  // Desktop/Mouse click implementation
-  resultVideoWrap.addEventListener('click', (e) => {
-    // If it's a simulated or true mouse click and not part of a swipe exit gesture
-    if(!sM) { toggleVideoPlayback(); }
-  });
+  resultDisplayContainer.addEventListener('touchend', () => { if(!sM) { toggleVideoPlayback(); } });
+  resultDisplayContainer.addEventListener('click', (e) => { if(!sM && e.target === resultCanvas) { toggleVideoPlayback(); } });
+  inlinePlayPauseBtn.addEventListener('click', toggleVideoPlayback);
 
   function toggleVideoPlayback() {
     if (resultVideo.paused) {
-      resultVideo.play().then(() => {
-        bigPlayBtn.classList.add('hidden');
-      }).catch(() => {});
+      resultVideo.play().catch((err) => { console.error("Playback failed: ", err); });
     } else {
       resultVideo.pause();
-      bigPlayBtn.classList.remove('hidden');
     }
   }
 
   function markCurrentFinisher() {
-    const vMs = resultVideo.currentTime * 1000;
-    let seg = videoTimelineMap[0] || { videoStart: 0, raceStart: 0 };
-    for (let i = 0; i < videoTimelineMap.length; i++) { if (vMs >= videoTimelineMap[i].videoStart) seg = videoTimelineMap[i]; }
-    finishersList.push(formatClock(seg.raceStart + (vMs - seg.videoStart)));
+    const calculatedMs = getCalculatedRaceTimeMs();
+    finishersList.push(formatClock(calculatedMs));
     renderResultsTable();
   }
 
@@ -932,17 +979,123 @@
     });
   }
 
-  markFinisherBtn.onclick = markCurrentFinisher;
+  takeSplitBtn.onclick = markCurrentFinisher;
   window.onkeydown = (e) => { if (resultOverlay.classList.contains('show') && e.code === 'Space') { e.preventDefault(); markCurrentFinisher(); } };
 
   exportCsvBtn.onclick = () => {
-    const p = prompt("Optional file description name prefix:", "");
-    let csv = 'Place,True Race Time\n'; finishersList.forEach((t, i) => csv += `${i+1},${t}\n`);
-    const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
-    link.download = `${p?p.trim().replace(/[^a-z0-9]/gi,'_')+'-':''}results-${Date.now()}.csv`; link.click();
+    let desiredName = prompt("Enter a name for your CSV file:", `results-${Date.now()}`);
+    if (desiredName === null) return; 
+    desiredName = desiredName.trim() || `results-${Date.now()}`;
+    const cleanFilename = desiredName.replace(/[^a-z0-9_\-\(\)]/gi, '_');
+    let csv = 'Place,Time\n'; 
+    finishersList.forEach((t, i) => csv += `${i+1},${t}\n`);
+    const link = document.createElement('a'); 
+    link.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
+    link.download = cleanFilename.endsWith('.csv') ? cleanFilename : `${cleanFilename}.csv`; 
+    link.click();
   };
 
-  discardBtn.onclick = () => { if(confirm('Exit review mode? Unsaved selections will be lost.')) { resultOverlay.classList.remove('show'); resultVideo.pause(); recordedChunks=[]; finishersList=[]; videoTimelineMap=[]; } };
+  burnVideoBtn.onclick = () => {
+    resultVideo.pause();
+    burnVideoBtn.textContent = "Processing...";
+    burnVideoBtn.disabled = true;
+
+    resultVideo.currentTime = 0;
+
+    // Detect actual framerate; fall back to 60 if not available
+    const detectedFps = (resultVideo.getVideoPlaybackQuality &&
+      resultVideo.getVideoPlaybackQuality().totalVideoFrames > 0)
+      ? null  // can't reliably get fps this way, use track below
+      : null;
+    // Best available method: MediaStream track settings
+    let burnFps = 60;
+    if (cameraStream) {
+      const vt = cameraStream.getVideoTracks()[0];
+      if (vt) burnFps = vt.getSettings().frameRate || 60;
+    }
+    // For uploaded videos, try to read from the video element via a quick frame sample
+    // We'll measure it properly: grab totalVideoFrames delta over a known duration isn't
+    // possible pre-play, so use the most reliable cross-browser fallback:
+    // requestVideoFrameCallback gives us exact timestamps if available
+    const tryGetFps = () => new Promise(resolve => {
+      if (!('requestVideoFrameCallback' in HTMLVideoElement.prototype)) return resolve(burnFps);
+      let t1 = null, count = 0;
+      const sample = (now, meta) => {
+        if (t1 === null) { t1 = meta.mediaTime; resultVideo.requestVideoFrameCallback(sample); count++; }
+        else {
+          const delta = meta.mediaTime - t1;
+          resolve(delta > 0 ? Math.round(1 / delta) : burnFps);
+        }
+      };
+      resultVideo.currentTime = 0;
+      resultVideo.requestVideoFrameCallback(sample);
+    });
+
+    tryGetFps().then(fps => {
+      burnFps = Math.max(24, Math.min(120, fps || 60));
+      const burnStream = resultCanvas.captureStream(burnFps);
+      // Scale bitrate with resolution and fps; floor at 8Mbps, cap at 50Mbps
+      const pixels = resultCanvas.width * resultCanvas.height;
+      const bitsPerPixelPerFrame = 0.1;
+      const targetBitrate = Math.min(50_000_000, Math.max(8_000_000, Math.round(pixels * bitsPerPixelPerFrame * burnFps)));
+
+      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+        ? 'video/webm;codecs=vp9' : 'video/webm';
+      const burnRecorder = new MediaRecorder(burnStream, { videoBitsPerSecond: targetBitrate, mimeType });
+      const chunks = [];
+
+      burnRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+
+      burnRecorder.onstop = () => {
+        const finalBlob = new Blob(chunks, { type: 'video/webm' });
+        const downloadUrl = URL.createObjectURL(finalBlob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = `burned-race-${Date.now()}.webm`;
+        a.click();
+
+        burnVideoBtn.textContent = "Burn & Save Video";
+        burnVideoBtn.disabled = false;
+      };
+
+      const frameInterval = 1 / burnFps;
+      resultVideo.onseeked = function handleBurnStep() {
+        if (resultVideo.currentTime < resultVideo.duration) {
+          rCtx.drawImage(resultVideo, 0, 0, resultCanvas.width, resultCanvas.height);
+          const fSize = Math.round(resultCanvas.width * 0.045);
+          rCtx.font = `700 ${fSize}px ui-monospace, monospace`;
+          rCtx.lineJoin = 'round'; rCtx.lineWidth = fSize * 0.15; rCtx.strokeStyle = 'rgba(0,0,0,0.8)';
+          const txt = formatClock(Math.max(0, getCalculatedRaceTimeMs()));
+          rCtx.strokeText(txt, fSize * 0.5, resultCanvas.height - fSize * 0.5);
+          rCtx.fillStyle = '#f4f1ea';
+          rCtx.fillText(txt, fSize * 0.5, resultCanvas.height - fSize * 0.5);
+
+          resultVideo.currentTime += frameInterval;
+        } else {
+          resultVideo.onseeked = null;
+          burnRecorder.stop();
+        }
+      };
+
+      burnRecorder.start();
+      resultVideo.currentTime = 0;
+    });
+  };
+
+  discardBtn.onclick = () => {
+    if(confirm('Exit review mode? Unsaved selections will be lost.')) {
+      resultOverlay.classList.remove('show');
+      resultVideo.pause();
+      resultVideo.src = '';
+      finishersList=[]; videoTimelineMap=[];
+      isImportedVideoMode = false; isVideoSynced = false;
+      // Restart live camera if it was killed by an external video upload
+      if (!cameraStream) {
+        drawLoopActive = true;
+        startCamera();
+      }
+    }
+  };
   downloadBtn.onclick = () => { const a=document.createElement('a'); a.href=lastBlobUrl; a.download=`race-${Date.now()}.webm`; a.click(); };
 })();
 </script>
