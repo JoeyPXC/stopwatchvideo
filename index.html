@@ -97,19 +97,6 @@
   #recDot.blink{animation:blink 1s infinite;}
   @keyframes blink{50%{opacity:.25;}}
 
-  #audioBadge{
-    font-size:11px;
-    padding:6px 10px;
-    border-radius:20px;
-    background:rgba(0,0,0,0.4);
-    display:flex;align-items:center;gap:4px;
-    border:1px solid rgba(244,241,234,0.15);
-  }
-  #audioMeter{
-    width:8px;height:8px;border-radius:50%;background:#2f9e44;
-    transition:transform 0.05s ease, background 0.1s ease;
-  }
-
   #bottomBar{
     position:fixed;bottom:0;left:0;right:0;
     display:flex;flex-direction:column;align-items:center;gap:14px;
@@ -317,8 +304,7 @@
     cursor:pointer;
   }
   #exportCsvBtn{background:#1c7ed6;color:#fff;}
-  #burnVideoBtn{background:#e03131;color:#fff;font-weight:bold;}
-  #burnSmoothBtn{background:#9c36b5;color:#fff;font-weight:bold;}
+  #burnSmoothBtn{background:#e03131;color:#fff;font-weight:bold;}
   #downloadBtn{background:var(--paper);color:var(--ink);}
   #discardBtn{background:transparent;color:#c9c4b8;border:1px solid #4a4640 !important;}
 
@@ -383,7 +369,6 @@
 <div id="topBar">
   <div style="width:130px;"></div> 
   <div id="badgeContainer">
-    <div id="audioBadge"><div id="audioMeter"></div><span>MIC</span></div>
     <div id="recBadge"><span id="recDot"></span><span id="recLabel">REC</span></div>
   </div>
   <button id="flipBtn" class="iconBtn">&#8635;</button>
@@ -442,8 +427,7 @@
 
   <div id="resultBar">
     <button id="exportCsvBtn">Export CSV</button>
-    <button id="burnVideoBtn">Burn Fast</button>
-    <button id="burnSmoothBtn" style="background:#9c36b5;color:#fff;">Burn Smooth</button>
+    <button id="burnSmoothBtn">Save Video</button>
     <button id="downloadBtn" style="display:none;">Download WebM</button>
     <button id="discardBtn">Discard</button>
   </div>
@@ -463,7 +447,6 @@
   const recDot = document.getElementById('recDot');
   const recLabel = document.getElementById('recLabel');
   const zoomIndicator = document.getElementById('zoomIndicator');
-  const audioMeter = document.getElementById('audioMeter');
 
   const clockBtn = document.getElementById('clockBtn');
   const resetClockBtn = document.getElementById('resetClockBtn');
@@ -483,7 +466,6 @@
   
   const inlinePlayPauseBtn = document.getElementById('inlinePlayPauseBtn');
   const prevFrameBtn=document.getElementById('prevFrameBtn');const nextFrameBtn=document.getElementById('nextFrameBtn');const back5Btn=document.getElementById('back5Btn');const fwd5Btn=document.getElementById('fwd5Btn');
-  const burnVideoBtn = document.getElementById('burnVideoBtn');
   const downloadBtn = document.getElementById('downloadBtn');
   const discardBtn = document.getElementById('discardBtn');
   const takeSplitBtn = document.getElementById('takeSplitBtn');
@@ -580,32 +562,6 @@
       const Ctx = window.AudioContext || window.webkitAudioContext;
       audioCtx = new Ctx();
       const source = audioCtx.createMediaStreamSource(new MediaStream([rawTrack]));
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 32;
-      const dataArray = new Uint8Array(analyser.frequencyBinCount);
-      source.connect(analyser);
-
-      function checkAudioVolume() {
-        if (!audioCtx) return;
-        analyser.getByteFrequencyData(dataArray);
-        let sum = 0;
-        for(let i=0; i<dataArray.length; i++) sum += dataArray[i];
-        let average = sum / dataArray.length;
-        
-        let scale = 1 + (average / 45);
-        audioMeter.style.transform = `scale(${Math.min(2.5, scale)})`;
-        
-        if (average > 140) { 
-          audioMeter.style.background = '#e78a8e';
-        } else if (average > 80) {
-          audioMeter.style.background = '#fcc419'; 
-        } else {
-          audioMeter.style.background = '#2f9e44'; 
-        }
-        requestAnimationFrame(checkAudioVolume);
-      }
-      checkAudioVolume();
-
       const limiter = audioCtx.createDynamicsCompressor();
       limiter.threshold.setValueAtTime(-10, audioCtx.currentTime);
       limiter.knee.setValueAtTime(4, audioCtx.currentTime);
@@ -692,8 +648,8 @@
     const m = Math.floor(totalSec / 60);
     const s = totalSec - m * 60;
     const sign = isNegative ? '-' : '';
-    if (m === 0) return sign + s.toFixed(2);
-    return `${sign}${m}:${s.toFixed(2).padStart(5, '0')}`;
+    if (m === 0) return sign + s.toFixed(1);
+    return `${sign}${m}:${s.toFixed(1).padStart(4, '0')}`;
   }
 
   function parseClockToMs(inputStr) {
@@ -814,7 +770,7 @@
       isVideoSynced = false; // Lock clock presentation to 0.00 until synced
       finishersList = []; 
       renderResultsTable();
-      burnVideoBtn.style.display = 'inline-block'; burnSmoothBtn.style.display = 'inline-block'; downloadBtn.style.display = 'none'; syncVideoBtn.style.display = 'inline-block';
+      burnSmoothBtn.style.display = 'inline-block'; downloadBtn.style.display = 'none'; syncVideoBtn.style.display = 'inline-block';
       resultOverlay.classList.add('show');
       drawReviewFrame();
     };
@@ -926,7 +882,7 @@
           isVideoSynced = true; // Camera recordings are always auto-synced
           finishersList = []; 
           renderResultsTable();
-          burnVideoBtn.style.display = 'none'; burnSmoothBtn.style.display = 'none'; downloadBtn.style.display = 'inline-block'; syncVideoBtn.style.display = 'none';
+          burnSmoothBtn.style.display = 'none'; downloadBtn.style.display = 'inline-block'; syncVideoBtn.style.display = 'none';
           drawLoopActive = false; // pause live canvas while review is open
           resultOverlay.classList.add('show');
           drawReviewFrame();
@@ -1160,70 +1116,37 @@
     const pixels = resultCanvas.width * resultCanvas.height;
     const targetBitrate = Math.min(50_000_000, Math.max(8_000_000, Math.round(pixels * 0.1 * fps)));
     const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm';
-    const burnStream = resultCanvas.captureStream(fps);
+    // Include audio from the uploaded video if available
+    const videoTracks = resultCanvas.captureStream(fps).getVideoTracks();
+    const audioTracks = resultVideo.captureStream ? resultVideo.captureStream().getAudioTracks() : [];
+    const burnStream = new MediaStream([...videoTracks, ...audioTracks]);
     const burnRecorder = new MediaRecorder(burnStream, { videoBitsPerSecond: targetBitrate, mimeType });
     const chunks = [];
     burnRecorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
     return { burnRecorder, chunks };
   }
 
-  function finishBurn(chunks, burnBtn, origLabel) {
+  function finishBurn(chunks) {
     const finalBlob = new Blob(chunks, { type: 'video/webm' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(finalBlob);
-    a.download = `burned-race-${Date.now()}.webm`;
+    a.download = `race-${Date.now()}.webm`;
     a.click();
-    burnBtn.textContent = origLabel;
-    burnBtn.disabled = false;
+    burnSmoothBtn.textContent = 'Save Video';
     burnSmoothBtn.disabled = false;
-    burnVideoBtn.disabled = false;
   }
 
-  // FAST BURN — frame-by-frame seek, faster than real time but may have minor judder
-  burnVideoBtn.onclick = () => {
-    resultVideo.pause();
-    burnVideoBtn.textContent = 'Processing…';
-    burnVideoBtn.disabled = true;
-    burnSmoothBtn.disabled = true;
-
-    getBurnFps().then(fps => {
-      const { burnRecorder, chunks } = startBurnRecorder(fps);
-      const frameInterval = 1 / fps;
-
-      burnRecorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
-      burnRecorder.onstop = () => finishBurn(chunks, burnVideoBtn, 'Burn Fast');
-
-      resultVideo.onseeked = function handleBurnStep() {
-        if (resultVideo.currentTime < resultVideo.duration) {
-          rCtx.drawImage(resultVideo, 0, 0, resultCanvas.width, resultCanvas.height);
-          drawClockOnCanvas();
-          resultVideo.currentTime += frameInterval;
-        } else {
-          resultVideo.onseeked = null;
-          burnRecorder.stop();
-        }
-      };
-
-      burnRecorder.start();
-      resultVideo.currentTime = 0;
-    });
-  };
-
-  // SMOOTH BURN — plays at real speed, guaranteed even frame timing, takes as long as the clip
   burnSmoothBtn.onclick = () => {
     resultVideo.pause();
-    burnSmoothBtn.textContent = 'Recording…';
+    burnSmoothBtn.textContent = 'Saving…';
     burnSmoothBtn.disabled = true;
-    burnVideoBtn.disabled = true;
     resultVideo.currentTime = 0;
 
     getBurnFps().then(fps => {
       const { burnRecorder, chunks } = startBurnRecorder(fps);
-
       burnRecorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
-      burnRecorder.onstop = () => finishBurn(chunks, burnSmoothBtn, 'Burn Smooth');
+      burnRecorder.onstop = () => finishBurn(chunks);
 
-      // Draw each frame as it arrives via rAF during playback
       let smoothLoopId = null;
       const smoothLoop = () => {
         if (!resultVideo.paused && !resultVideo.ended) {
