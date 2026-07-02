@@ -500,7 +500,44 @@
   let clockElapsedMs = 0;
   let clockStartPerf = 0; 
   let lastLapMarkMs = 0; 
-  let lapUsed = false;   
+  let lapUsed = false;
+
+  // --- Persistence ---
+  const LS_KEY = 'svp_clock';
+  function saveClock() {
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify({
+        running: clockRunning,
+        elapsedMs: clockElapsedMs,
+        // Store real wall-clock start so time is correct after app switch/call
+        wallStart: clockRunning ? Date.now() - clockElapsedMs : null,
+        lastLapMarkMs,
+        lapUsed,
+        finishersList
+      }));
+    } catch(e) {}
+  }
+  function restoreClock() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(LS_KEY));
+      if (!saved) return;
+      finishersList = saved.finishersList || [];
+      lastLapMarkMs = saved.lastLapMarkMs || 0;
+      lapUsed = saved.lapUsed || false;
+      if (saved.running && saved.wallStart) {
+        // Clock was running when we left — calculate true elapsed from wall time
+        clockElapsedMs = Date.now() - saved.wallStart;
+        clockStartPerf = Date.now();
+        clockRunning = true;
+        clockBtn.textContent = 'Stop clock'; clockBtn.classList.add('active'); resetClockBtn.disabled = true;
+      } else {
+        clockElapsedMs = saved.elapsedMs || 0;
+        clockRunning = false;
+        if (clockElapsedMs > 0) resetClockBtn.disabled = false;
+      }
+      if (finishersList.length > 0) renderResultsTable();
+    } catch(e) {}
+  }
   
   let isAudioArmed = false;
   let isListeningForAudio = false;
@@ -616,6 +653,7 @@
       canvas.width = video.videoWidth || 1280;
       canvas.height = video.videoHeight || 720;
       requestWakeLock();
+      restoreClock();
       requestAnimationFrame(drawLoop);
     } catch (err) {
       permError.textContent = 'Could not access peripherals: ' + err.name;
@@ -685,20 +723,23 @@
     if (clockRunning) return;
     clockStartPerf = Date.now(); clockRunning = true;
     clockBtn.textContent = 'Stop clock'; clockBtn.classList.add('active'); resetClockBtn.disabled = true;
+    saveClock();
   }
 
   function stopClockNow() {
     if (!clockRunning) return;
     clockElapsedMs += Date.now() - clockStartPerf; clockRunning = false;
     clockBtn.textContent = 'Start clock'; clockBtn.classList.remove('active'); resetClockBtn.disabled = false;
+    saveClock();
   }
 
   clockBtn.addEventListener('click', () => { if (clockRunning) stopClockNow(); else startClockNow(); });
   resetClockBtn.addEventListener('click', () => {
     if (clockRunning) return;
     clockElapsedMs = 0; lastLapMarkMs = 0; lapUsed = false; resetClockBtn.disabled = true;
+    saveClock();
   });
-  lapBtn.addEventListener('click', () => { lastLapMarkMs = currentClockMs(); lapUsed = true; });
+  lapBtn.addEventListener('click', () => { lastLapMarkMs = currentClockMs(); lapUsed = true; saveClock(); });
 
   let pinchActive = false, pinchStartDist = 0, pinchStartZoomValue = 1;
   document.getElementById('stage').addEventListener('touchstart', e => {
@@ -967,6 +1008,7 @@
     const calculatedMs = getCalculatedRaceTimeMs();
     finishersList.push(formatClock(calculatedMs));
     renderResultsTable();
+    saveClock();
   }
 
   function renderResultsTable() {
@@ -974,7 +1016,7 @@
     finishersList.forEach((t, i) => {
       const tr = document.createElement('tr');
       tr.innerHTML = `<td>${i+1}</td><td style="font-weight:bold;">${t}</td><td style="text-align:center;"><button class="deleteRowBtn">&times;</button></td>`;
-      tr.querySelector('.deleteRowBtn').onclick = () => { finishersList.splice(i,1); renderResultsTable(); };
+      tr.querySelector('.deleteRowBtn').onclick = () => { finishersList.splice(i,1); renderResultsTable(); saveClock(); };
       resultsBody.appendChild(tr);
     });
   }
@@ -1089,6 +1131,7 @@
       resultVideo.src = '';
       finishersList=[]; videoTimelineMap=[];
       isImportedVideoMode = false; isVideoSynced = false;
+      saveClock(); // persist cleared finishers list
       // Restart live camera if it was killed by an external video upload
       if (!cameraStream) {
         drawLoopActive = true;
