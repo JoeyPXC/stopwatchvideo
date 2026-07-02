@@ -314,8 +314,7 @@
     <div id="bigPlayBtn">&#9654;</div>
   </div>
   <div id="frameStepBar">
-    <button id="prevFrameBtn" class="frameBtn">&#9664;&#9664; Frame</button>
-    <button id="nextFrameBtn" class="frameBtn">Frame &#9654;&#9654;</button>
+    <button id="back5Btn" class="frameBtn">&#171;5</button><button id="prevFrameBtn" class="frameBtn">&#9664;1</button><button id="nextFrameBtn" class="frameBtn">1&#9654;</button><button id="fwd5Btn" class="frameBtn">5&#187;</button><br><button class="frameBtn speed" data-speed="0.1">0.1x</button><button class="frameBtn speed" data-speed="0.25">0.25x</button><button class="frameBtn speed" data-speed="0.5">0.5x</button><button class="frameBtn speed" data-speed="1">1x</button>
   </div>
   <div id="resultBar">
     <button id="shareBtn">Share</button>
@@ -352,8 +351,7 @@
   const resultVideo = document.getElementById('resultVideo');
   const resultVideoWrap = document.getElementById('resultVideoWrap');
   const bigPlayBtn = document.getElementById('bigPlayBtn');
-  const prevFrameBtn = document.getElementById('prevFrameBtn');
-  const nextFrameBtn = document.getElementById('nextFrameBtn');
+  const prevFrameBtn=document.getElementById('prevFrameBtn');const nextFrameBtn=document.getElementById('nextFrameBtn');const back5Btn=document.getElementById('back5Btn');const fwd5Btn=document.getElementById('fwd5Btn');
   const shareBtn = document.getElementById('shareBtn');
   const downloadBtn = document.getElementById('downloadBtn');
   const discardBtn = document.getElementById('discardBtn');
@@ -854,7 +852,7 @@
   // clock directly off that frame. This is an approximation (1/30s steps,
   // matching our capture rate) rather than a guaranteed exact frame index —
   // browsers don't expose true frame-stepping, only currentTime seeking.
-  const FRAME_STEP_SEC = 1 / 30;
+  let FRAME_STEP_SEC=1/60;
   function stepResultFrame(direction) {
     if (!isFinite(resultVideo.duration)) return;
     resultVideo.pause();
@@ -862,7 +860,7 @@
     resultVideo.currentTime = Math.max(0, Math.min(resultVideo.duration, t));
   }
   prevFrameBtn.addEventListener('click', () => stepResultFrame(-1));
-  nextFrameBtn.addEventListener('click', () => stepResultFrame(1));
+  nextFrameBtn.addEventListener('click',()=>stepResultFrame(1));back5Btn.addEventListener('click',()=>stepResultFrame(-5));fwd5Btn.addEventListener('click',()=>stepResultFrame(5));document.querySelectorAll('.speed').forEach(b=>b.onclick=()=>{resultVideo.playbackRate=parseFloat(b.dataset.speed);});
 
   // Drag left/right anywhere on the video to scrub, and a plain tap
   // toggles play/pause — replacing the native controls bar, which sat
