@@ -338,6 +338,37 @@
     transition:opacity .15s ease;
   }
   #zoomIndicator.show{opacity:1;}
+
+  /* Scrub speed indicator — bottom center of review video */
+  #scrubIndicator{
+    position:absolute;bottom:10px;left:50%;
+    transform:translateX(-50%);
+    font-family:var(--mono);font-weight:700;font-size:14px;
+    background:rgba(0,0,0,.65);color:var(--paper);
+    padding:6px 14px;border-radius:10px;
+    opacity:0;pointer-events:none;
+    transition:opacity .1s ease;
+    white-space:nowrap;
+    z-index:5;
+  }
+  #scrubIndicator.show{opacity:1;}
+
+  /* Portrait warning */
+  #portraitWarning{
+    display:none;
+    position:fixed;inset:0;
+    background:rgba(0,0,0,.92);
+    color:var(--paper);
+    flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;padding:32px;
+    z-index:100;
+    font-family:var(--mono);
+  }
+  #portraitWarning svg{margin-bottom:20px;opacity:.8;}
+  #portraitWarning p{font-size:16px;line-height:1.6;color:#c9c4b8;max-width:28ch;}
+  @media (orientation:portrait){
+    #portraitWarning{display:flex;}
+  }
   #installBtn{
     position:fixed;top:calc(10px + env(safe-area-inset-top));left:50%;
     transform:translateX(-50%);display:none;
@@ -356,6 +387,15 @@
 </style>
 </head>
 <body>
+
+<div id="portraitWarning">
+  <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="20" y="8" width="28" height="48" rx="4" stroke="#f4f1ea" stroke-width="3"/>
+    <path d="M8 32 L20 20 M8 32 L20 44" stroke="#c1272d" stroke-width="3" stroke-linecap="round"/>
+    <path d="M56 32 L44 20 M56 32 L44 44" stroke="#c1272d" stroke-width="3" stroke-linecap="round"/>
+  </svg>
+  <p>Rotate your phone to landscape for the best experience</p>
+</div>
 
 <div id="stage">
   <video id="video" playsinline muted autoplay></video>
@@ -406,6 +446,7 @@
   <div id="resultDisplayContainer">
     <video id="resultVideo" playsinline muted preload="auto" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;visibility:hidden;"></video>
     <canvas id="resultCanvas"></canvas>
+    <div id="scrubIndicator"></div>
   </div>
   <div id="frameStepBar">
     <button id="inlinePlayPauseBtn" class="frameBtn">PLAY</button>
@@ -658,6 +699,10 @@
       canvas.width = video.videoWidth || 1280;
       canvas.height = video.videoHeight || 720;
       requestWakeLock();
+      // Request landscape lock where supported (Chrome Android)
+      if (screen.orientation && screen.orientation.lock) {
+        screen.orientation.lock('landscape').catch(() => {});
+      }
       restoreClock();
       requestAnimationFrame(drawLoop);
     } catch (err) {
@@ -955,11 +1000,11 @@
   }
 
   recMainBtn.addEventListener('click', () => {
-    if (recordingState === 'idle') startRecording();
-    else if (recordingState === 'recording') { recorder.pause(); recordingActiveMs += performance.now()-activeSegmentStart; recordingState = 'paused'; updateRecUI(); }
-    else if (recordingState === 'paused') { recorder.resume(); activeSegmentStart = performance.now(); recordingState = 'recording'; videoTimelineMap.push({ videoStart: recordingActiveMs, raceStart: currentClockMs() }); updateRecUI(); }
+    if (recordingState === 'idle') { haptic('heavy'); startRecording(); }
+    else if (recordingState === 'recording') { haptic('medium'); recorder.pause(); recordingActiveMs += performance.now()-activeSegmentStart; recordingState = 'paused'; updateRecUI(); }
+    else if (recordingState === 'paused') { haptic('medium'); recorder.resume(); activeSegmentStart = performance.now(); recordingState = 'recording'; videoTimelineMap.push({ videoStart: recordingActiveMs, raceStart: currentClockMs() }); updateRecUI(); }
   });
-  finishBtn.addEventListener('click', () => { lastRecordingDurationMs = currentActiveDurationMs(); recorder.stop(); recordingState = 'idle'; updateRecUI(); });
+  finishBtn.addEventListener('click', () => { haptic('heavy'); lastRecordingDurationMs = currentActiveDurationMs(); recorder.stop(); recordingState = 'idle'; updateRecUI(); });
 
   function updateRecUI() {
     recMainBtn.className = 'state-' + (recordingState==='starting'?'recording':recordingState);
@@ -984,20 +1029,89 @@
     };
   });
   
-  let sX=0, sT=0, sM=false;
-  resultDisplayContainer.addEventListener('touchstart', e => { 
-    sX=e.touches[0].clientX; sT=resultVideo.currentTime; sM=false; 
-  }, { passive: true });
-  
-  resultDisplayContainer.addEventListener('touchmove', e => { 
-    const dx=e.touches[0].clientX-sX; 
-    if(Math.abs(dx)>6) sM=true; 
-    if(sM) { 
-      resultVideo.pause();
-      resultVideo.currentTime=Math.max(0,Math.min(resultVideo.duration, sT+dx*0.012)); 
+  // Haptic feedback utility
+  function haptic(style) {
+    if (navigator.vibrate) {
+      if (style === 'light') navigator.vibrate(10);
+      else if (style === 'medium') navigator.vibrate(25);
+      else if (style === 'heavy') navigator.vibrate([20, 10, 20]);
     }
+    // iOS / Safari use NotificationFeedbackGenerator via webkit if available
+    if (window.DeviceMotionEvent && typeof DeviceMotionEvent.requestPermission === 'function') {
+      try { if (window._tapticEngine) window._tapticEngine.impact(style); } catch(e) {}
+    }
+  }
+
+  const scrubIndicator = document.getElementById('scrubIndicator');
+  let scrubIndicatorTimer = null;
+  function showScrubIndicator(text) {
+    scrubIndicator.textContent = text;
+    scrubIndicator.classList.add('show');
+    clearTimeout(scrubIndicatorTimer);
+    scrubIndicatorTimer = setTimeout(() => scrubIndicator.classList.remove('show'), 800);
+  }
+
+  // Velocity-aware scrub: slow drag = frame by frame, fast drag = big jumps
+  let sX=0, sT=0, sM=false, sLastX=0, sLastT=0, sVel=0, sLastFrame=-1;
+  const FPS_STEP = 1/60;
+
+  resultDisplayContainer.addEventListener('touchstart', e => {
+    sX = e.touches[0].clientX;
+    sLastX = sX;
+    sT = resultVideo.currentTime;
+    sLastT = performance.now();
+    sM = false; sVel = 0; sLastFrame = -1;
+  }, { passive: true });
+
+  resultDisplayContainer.addEventListener('touchmove', e => {
+    const x = e.touches[0].clientX;
+    const dx = x - sX;
+    const now = performance.now();
+    const dt = now - sLastT || 16;
+
+    // Instantaneous velocity in px/ms
+    const instVel = (x - sLastX) / dt;
+    sVel = sVel * 0.6 + instVel * 0.4; // smoothed
+    sLastX = x; sLastT = now;
+
+    if (Math.abs(dx) > 6) sM = true;
+    if (!sM) return;
+
+    resultVideo.pause();
+
+    // Speed scaling: |vel| < 0.3 px/ms → frame by frame; ramps up to ~5s/s at fast swipe
+    const speed = Math.abs(sVel);
+    let seekDelta;
+    if (speed < 0.15) {
+      // Ultra slow — snap to nearest frame boundary only when crossing one
+      const targetFrame = Math.round((sT + dx * FPS_STEP * 0.5) / FPS_STEP);
+      if (targetFrame !== sLastFrame) {
+        seekDelta = targetFrame * FPS_STEP - resultVideo.currentTime;
+        sLastFrame = targetFrame;
+      } else { return; }
+    } else if (speed < 0.5) {
+      seekDelta = dx * 0.008; // ~frame per 2px
+    } else if (speed < 1.5) {
+      seekDelta = dx * 0.03;  // medium
+    } else {
+      seekDelta = dx * 0.08;  // fast scrub
+    }
+
+    const newTime = Math.max(0, Math.min(resultVideo.duration, sT + (seekDelta !== undefined ? seekDelta : dx * 0.012)));
+    resultVideo.currentTime = newTime;
+
+    // Show indicator
+    const frameDelta = Math.round((newTime - sT) / FPS_STEP);
+    let label;
+    if (Math.abs(frameDelta) <= 2 && speed < 0.5) {
+      label = (frameDelta >= 0 ? '+' : '') + frameDelta + (Math.abs(frameDelta) === 1 ? ' frame' : ' frames');
+    } else {
+      const secDelta = newTime - sT;
+      label = (secDelta >= 0 ? '+' : '') + secDelta.toFixed(2) + 's';
+    }
+    showScrubIndicator(label);
   }, { passive: false });
-  
+
   resultDisplayContainer.addEventListener('touchend', () => { if(!sM) { toggleVideoPlayback(); } });
   resultDisplayContainer.addEventListener('click', (e) => { if(!sM && e.target === resultCanvas) { toggleVideoPlayback(); } });
   inlinePlayPauseBtn.addEventListener('click', toggleVideoPlayback);
