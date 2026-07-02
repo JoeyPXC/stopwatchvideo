@@ -132,13 +132,6 @@
   }
   .pillBtn.active{background:var(--track-red);border-color:var(--track-red);}
   .pillBtn:disabled{opacity:.35;}
-  
-  #audioArmBtn.armed {
-    animation: pulseArmed 1.5s infinite;
-  }
-  @keyframes pulseArmed {
-    50% { opacity: 0.7; }
-  }
 
   .smallBtn{
     width:40px;height:40px;border-radius:50%;
@@ -432,7 +425,7 @@
   <div id="clockRow">
     <button id="resetClockBtn" class="smallBtn" disabled>&#8634;</button>
     <button id="clockBtn" class="pillBtn">Start clock</button>
-    <button id="audioArmBtn" class="pillBtn">Auto-Arm Gun</button>
+    <button id="offsetStartBtn" class="pillBtn">Offset Start</button>
     <button id="lapBtn" class="pillBtn">Lap</button>
   </div>
   <div id="recRow">
@@ -502,7 +495,6 @@
   const audioMeter = document.getElementById('audioMeter');
 
   const clockBtn = document.getElementById('clockBtn');
-  const audioArmBtn = document.getElementById('audioArmBtn');
   const resetClockBtn = document.getElementById('resetClockBtn');
   const lapBtn = document.getElementById('lapBtn');
   const recMainBtn = document.getElementById('recMainBtn');
@@ -585,10 +577,6 @@
     } catch(e) {}
   }
   
-  let isAudioArmed = false;
-  let isListeningForAudio = false;
-  let armingTimeout = null;
-
   let recorder = null;
   let recordingState = 'idle'; 
   let recordedChunks = [];
@@ -637,15 +625,7 @@
         audioMeter.style.transform = `scale(${Math.min(2.5, scale)})`;
         
         if (average > 140) { 
-          audioMeter.style.background = '#e78a8e'; 
-          if (isAudioArmed && isListeningForAudio && !clockRunning) {
-            startClockNow();
-            isAudioArmed = false;
-            isListeningForAudio = false;
-            audioArmBtn.classList.remove('armed');
-            audioArmBtn.style.background = '';
-            audioArmBtn.textContent = "Auto-Arm Gun";
-          }
+          audioMeter.style.background = '#e78a8e';
         } else if (average > 80) {
           audioMeter.style.background = '#fcc419'; 
         } else {
@@ -718,26 +698,17 @@
   });
   permBtn.addEventListener('click', startCamera);
 
-  audioArmBtn.addEventListener('click', () => {
+  const offsetStartBtn = document.getElementById('offsetStartBtn');
+  offsetStartBtn.addEventListener('click', () => {
     if (clockRunning) return;
-    if (isAudioArmed) {
-      isAudioArmed = false; isListeningForAudio = false; clearTimeout(armingTimeout);
-      audioArmBtn.classList.remove('armed'); audioArmBtn.style.background = ''; audioArmBtn.textContent = "Auto-Arm Gun";
-      return;
-    }
-    isAudioArmed = true; isListeningForAudio = false; 
-    audioArmBtn.classList.add('armed'); audioArmBtn.style.background = '#d9480f';
-    let countdown = 3; audioArmBtn.textContent = `Arming in ${countdown}...`;
-    const interval = setInterval(() => {
-      countdown--;
-      if (countdown > 0 && isAudioArmed) audioArmBtn.textContent = `Arming in ${countdown}...`;
-      else clearInterval(interval);
-    }, 1000);
-
-    armingTimeout = setTimeout(() => {
-      if (!isAudioArmed) return;
-      isListeningForAudio = true; audioArmBtn.style.background = '#e67e22'; audioArmBtn.textContent = "ARMED & LISTENING";
-    }, 3000);
+    const input = prompt('Enter start offset (e.g. 45 or 1:00):', '0');
+    if (input === null) return;
+    const offsetMs = parseClockToMs(input);
+    clockElapsedMs = offsetMs;
+    clockStartPerf = Date.now();
+    clockRunning = true;
+    clockBtn.textContent = 'Stop clock'; clockBtn.classList.add('active'); resetClockBtn.disabled = true;
+    saveClock();
   });
 
   function currentClockMs() { return clockElapsedMs + (clockRunning ? Date.now() - clockStartPerf : 0); }
