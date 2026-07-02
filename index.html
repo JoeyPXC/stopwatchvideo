@@ -1,10 +1,11 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="theme-color" content="#161513">
-<title>Stopwatch Video</title>
+<title>Stopwatch Video Pro</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -24,6 +25,8 @@
     overflow:hidden;
     font-family:var(--mono);
     color:var(--paper);
+    user-select: none; /* Prevents random red/text highlights when clicking rapidly */
+    -webkit-user-select: none;
   }
   #stage{
     position:fixed;inset:0;
@@ -57,7 +60,6 @@
   }
   #permOverlay.hidden{display:none;}
 
-  /* top bar */
   #topBar{
     position:fixed;top:0;left:0;right:0;
     display:flex;justify-content:space-between;align-items:center;
@@ -108,7 +110,6 @@
     transition:transform 0.05s ease, background 0.1s ease;
   }
 
-  /* bottom controls */
   #bottomBar{
     position:fixed;bottom:0;left:0;right:0;
     display:flex;flex-direction:column;align-items:center;gap:14px;
@@ -131,6 +132,14 @@
   }
   .pillBtn.active{background:var(--track-red);border-color:var(--track-red);}
   .pillBtn:disabled{opacity:.35;}
+  
+  #audioArmBtn.armed {
+    animation: pulseArmed 1.5s infinite;
+  }
+  @keyframes pulseArmed {
+    50% { opacity: 0.7; }
+  }
+
   .smallBtn{
     width:40px;height:40px;border-radius:50%;
     border:1px solid rgba(244,241,234,.4);
@@ -172,7 +181,6 @@
   #finishBtn:disabled{opacity:.3;}
   #finishBtn.ready{background:#2f9e44;border-color:#2f9e44;}
 
-  /* result / share screen */
   #resultOverlay{
     position:fixed;inset:0;
     background:var(--ink);
@@ -189,12 +197,13 @@
     background:#000;
     overflow:hidden;
     flex-shrink:0;
+    cursor: pointer;
   }
   #resultVideoWrap video{
     display:block;
     width:100%;height:100%;
     object-fit:contain;
-    touch-action:none;
+    pointer-events: none; /* Let track/swipes fall cleanly to container script */
   }
   #bigPlayBtn{
     position:absolute;
@@ -202,15 +211,15 @@
     transform:translate(-50%,-50%);
     width:76px;height:76px;
     border-radius:50%;
-    background:rgba(0,0,0,.55);
+    background:rgba(0,0,0,.65);
     color:var(--paper);
     display:flex;align-items:center;justify-content:center;
     font-size:28px;
     padding-left:6px;
-    pointer-events:none;
-    transition:opacity .15s ease;
+    pointer-events:none; /* Clicks bypass the graphic entirely */
+    transition:opacity .15s ease, transform 0.1s ease;
   }
-  #bigPlayBtn.hidden{opacity:0;}
+  #bigPlayBtn.hidden{opacity:0; transform: translate(-50%, -50%) scale(0.85); pointer-events: none;}
 
   #frameStepBar{
     padding:8px 14px;
@@ -230,7 +239,6 @@
   }
   .frameBtn:active, .frameBtn.activeSpeed{background:var(--track-red);border-color:var(--track-red);}
 
-  /* Data & Results Section */
   #resultsDataContainer {
     flex:1;
     padding:14px;
@@ -241,11 +249,13 @@
   }
   #markingRow {
     display:flex;
-    gap:10px;
+    gap:8px;
     justify-content:center;
+    flex-wrap:wrap;
   }
   #markFinisherBtn {
-    flex:1;
+    flex:2;
+    min-width:140px;
     background:#2f9e44;
     color:#fff;
     border:none;
@@ -259,25 +269,22 @@
   }
   #markFinisherBtn:active { background:#247a35; }
   
-  #syncVideoBtn {
+  .syncActionBtn {
+    flex:1;
     background:rgba(0,0,0,0.4);
     color:var(--paper);
     border:1px solid rgba(244,241,234,.4);
     font-family:var(--mono);
-    font-size:13px;
-    padding:12px 16px;
+    font-size:12px;
+    padding:12px 10px;
     border-radius:6px;
     cursor:pointer;
   }
-  #syncVideoBtn.has-offset {
-    background:#f59f00;
-    color:#000;
-    border-color:#f59f00;
-  }
+  #flashZeroBtn { background:#1098ad; border-color:#1098ad; color:#fff; }
 
   #tableWrapper {
     flex:1;
-    max-height:220px;
+    max-height:180px;
     overflow-y:auto;
     border:1px solid #383530;
     border-radius:6px;
@@ -323,55 +330,29 @@
   #discardBtn{background:transparent;color:#c9c4b8;border:1px solid #4a4640 !important;}
 
   #zoomIndicator{
-    position:fixed;
-    top:50%;
-    left:50%;
+    position:fixed;top:50%;left:50%;
     transform:translate(-50%,-50%);
-    font-family:var(--mono);
-    font-weight:700;
-    font-size:22px;
-    background:rgba(0,0,0,.5);
-    color:var(--paper);
-    padding:10px 18px;
-    border-radius:14px;
-    z-index:30;
-    opacity:0;
-    pointer-events:none;
+    font-family:var(--mono);font-weight:700;font-size:22px;
+    background:rgba(0,0,0,.5);color:var(--paper);
+    padding:10px 18px;border-radius:14px;
+    z-index:30;opacity:0;pointer-events:none;
     transition:opacity .15s ease;
   }
   #zoomIndicator.show{opacity:1;}
-
   #installBtn{
-    position:fixed;
-    top:calc(10px + env(safe-area-inset-top));
-    left:50%;
-    transform:translateX(-50%);
-    display:none;
-    font-family:var(--mono);
-    font-size:11px;letter-spacing:.05em;text-transform:uppercase;
+    position:fixed;top:calc(10px + env(safe-area-inset-top));left:50%;
+    transform:translateX(-50%);display:none;
+    font-family:var(--mono);font-size:11px;letter-spacing:.05em;text-transform:uppercase;
     background:var(--track-red);color:var(--paper);
-    border:none;border-radius:20px;
-    padding:8px 16px;
-    z-index:25;
+    border:none;border-radius:20px;padding:8px 16px;z-index:25;
   }
-
   #versionTag{
-    position:fixed;
-    bottom:calc(4px + env(safe-area-inset-bottom));
-    right:6px;
-    font-family:var(--mono);
-    font-size:9px;
-    color:rgba(244,241,234,.35);
-    z-index:15;
-    pointer-events:none;
+    position:fixed;bottom:calc(4px + env(safe-area-inset-bottom));right:6px;
+    font-family:var(--mono);font-size:9px;color:rgba(244,241,234,.35);
+    z-index:15;pointer-events:none;
   }
-  
-  /* Upload Trigger UI */
   #importBtnRow {
-    position:absolute;
-    top:calc(12px + env(safe-area-inset-top));
-    left:14px;
-    z-index:25;
+    position:absolute;top:calc(12px + env(safe-area-inset-top));left:14px;z-index:25;
   }
 </style>
 </head>
@@ -385,8 +366,8 @@
 <button id="installBtn">Install app</button>
 
 <div id="permOverlay">
-  <h1>Stopwatch Video</h1>
-  <p>Needs access to your camera (and microphone, for crowd/gun audio) to record. Nothing is uploaded anywhere &mdash; recording stays on this device until you share it.</p>
+  <h1>Stopwatch Video Pro</h1>
+  <p>Needs access to your camera and microphone to track run splits and identify starting audio cues automatically.</p>
   <button id="permBtn">Enable camera</button>
   <p id="permError" style="color:#e78a8e;margin-top:16px;"></p>
 </div>
@@ -402,23 +383,23 @@
     <div id="audioBadge"><div id="audioMeter"></div><span>MIC</span></div>
     <div id="recBadge"><span id="recDot"></span><span id="recLabel">REC</span></div>
   </div>
-  <button id="flipBtn" class="iconBtn" title="Flip camera">&#8635;</button>
+  <button id="flipBtn" class="iconBtn">&#8635;</button>
 </div>
 
 <div id="zoomIndicator"></div>
-
-<div id="versionTag">v15-field-hardened</div>
+<div id="versionTag">v20-click-bounds-patch</div>
 
 <div id="bottomBar">
   <div id="clockRow">
-    <button id="resetClockBtn" class="smallBtn" title="Reset clock" disabled>&#8634;</button>
+    <button id="resetClockBtn" class="smallBtn" disabled>&#8634;</button>
     <button id="clockBtn" class="pillBtn">Start clock</button>
-    <button id="lapBtn" class="pillBtn" title="Mark a lap">Lap</button>
+    <button id="audioArmBtn" class="pillBtn">Auto-Arm Gun</button>
+    <button id="lapBtn" class="pillBtn">Lap</button>
   </div>
   <div id="recRow">
     <div style="width:56px;"></div>
-    <button id="recMainBtn" title="Record / pause / resume"><span id="recIcon"></span></button>
-    <button id="finishBtn" title="Finish and save" disabled>Finish</button>
+    <button id="recMainBtn"><span id="recIcon"></span></button>
+    <button id="finishBtn" disabled>Finish</button>
   </div>
 </div>
 
@@ -435,7 +416,8 @@
 
   <div id="resultsDataContainer">
     <div id="markingRow">
-      <button id="syncVideoBtn" title="Calibrate video clock timeline">Sync Clock: 0.00</button>
+      <button id="flashZeroBtn" class="syncActionBtn" title="Set this specific frame as race zero">Set Gun Flash (0.00)</button>
+      <button id="syncVideoBtn" class="syncActionBtn">Manual Sync</button>
       <button id="markFinisherBtn">Mark Finisher (Space)</button>
     </div>
     <div id="tableWrapper">
@@ -447,8 +429,7 @@
             <th style="width: 40px; text-align: center;"></th>
           </tr>
         </thead>
-        <tbody id="resultsBody">
-          </tbody>
+        <tbody id="resultsBody"></tbody>
       </table>
     </div>
   </div>
@@ -464,14 +445,12 @@
 <script>
 (function(){
   const video = document.getElementById('video');
-  const stage = document.getElementById('stage');
   const canvas = document.getElementById('canvas');
   const ctx = canvas.getContext('2d');
 
   const permOverlay = document.getElementById('permOverlay');
   const permBtn = document.getElementById('permBtn');
   const permError = document.getElementById('permError');
-
   const flipBtn = document.getElementById('flipBtn');
   const recBadge = document.getElementById('recBadge');
   const recDot = document.getElementById('recDot');
@@ -480,6 +459,7 @@
   const audioMeter = document.getElementById('audioMeter');
 
   const clockBtn = document.getElementById('clockBtn');
+  const audioArmBtn = document.getElementById('audioArmBtn');
   const resetClockBtn = document.getElementById('resetClockBtn');
   const lapBtn = document.getElementById('lapBtn');
   const recMainBtn = document.getElementById('recMainBtn');
@@ -499,16 +479,10 @@
   const discardBtn = document.getElementById('discardBtn');
   const markFinisherBtn = document.getElementById('markFinisherBtn');
   const syncVideoBtn = document.getElementById('syncVideoBtn');
+  const flashZeroBtn = document.getElementById('flashZeroBtn');
   const resultsBody = document.getElementById('resultsBody');
   const exportCsvBtn = document.getElementById('exportCsvBtn');
-
   const installBtn = document.getElementById('installBtn');
-
-  function isIOS() {
-    return /iP(hone|od|ad)/.test(navigator.userAgent) ||
-      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  }
-  if (isIOS()) downloadBtn.textContent = 'Save Video';
 
   let facingMode = 'environment';
   let cameraStream = null;
@@ -519,12 +493,15 @@
   let limitedAudioTrack = null;
   let wakeLock = null;
 
-  // Persistent stopwatch variables using wall-clock time tracking
   let clockRunning = false;
   let clockElapsedMs = 0;
   let clockStartPerf = 0; 
   let lastLapMarkMs = 0; 
   let lapUsed = false;   
+  
+  let isAudioArmed = false;
+  let isListeningForAudio = false;
+  let armingTimeout = null;
 
   let recorder = null;
   let recordingState = 'idle'; 
@@ -534,7 +511,6 @@
   let activeSegmentStart = 0;     
   let lastRecordingDurationMs = 0;
   
-  // Timeline tracking variables
   let videoTimelineMap = [];
   let finishersList = [];
   let isImportedVideoMode = false;
@@ -544,25 +520,10 @@
     return recordingActiveMs + (recordingState === 'recording' ? performance.now() - activeSegmentStart : 0);
   }
 
-  // ---------- Screen Wake Lock API System ----------
   async function requestWakeLock() {
     if (!('wakeLock' in navigator)) return;
-    try {
-      wakeLock = await navigator.wakeLock.request('screen');
-    } catch (err) {}
+    try { wakeLock = await navigator.wakeLock.request('screen'); } catch (err) {}
   }
-  function releaseWakeLock() {
-    if (wakeLock) {
-      wakeLock.release().then(() => { wakeLock = null; });
-    }
-  }
-  document.addEventListener('visibilitychange', () => {
-    if (wakeLock !== null && document.visibilityState === 'visible') {
-      requestWakeLock();
-    }
-  });
-
-  // ---------- Camera & Enhanced Audio Setup ----------
 
   function buildLimitedAudioTrack(rawTrack) {
     if (audioCtx) { try { audioCtx.close(); } catch (e) {} audioCtx = null; }
@@ -571,14 +532,11 @@
       const Ctx = window.AudioContext || window.webkitAudioContext;
       audioCtx = new Ctx();
       const source = audioCtx.createMediaStreamSource(new MediaStream([rawTrack]));
-      
-      // Setup Analyser Node for Audio-Cue Badge
       const analyser = audioCtx.createAnalyser();
       analyser.fftSize = 32;
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
       source.connect(analyser);
 
-      // Micro-render loop loop checking audio sound spikes
       function checkAudioVolume() {
         if (!audioCtx) return;
         analyser.getByteFrequencyData(dataArray);
@@ -586,13 +544,23 @@
         for(let i=0; i<dataArray.length; i++) sum += dataArray[i];
         let average = sum / dataArray.length;
         
-        // Scale and transform visual bullet metric dot dynamically
         let scale = 1 + (average / 45);
         audioMeter.style.transform = `scale(${Math.min(2.5, scale)})`;
-        if (average > 60) {
-          audioMeter.style.background = '#e78a8e'; // flashes red on gun shot level peaks
+        
+        if (average > 140) { 
+          audioMeter.style.background = '#e78a8e'; 
+          if (isAudioArmed && isListeningForAudio && !clockRunning) {
+            startClockNow();
+            isAudioArmed = false;
+            isListeningForAudio = false;
+            audioArmBtn.classList.remove('armed');
+            audioArmBtn.style.background = '';
+            audioArmBtn.textContent = "Auto-Arm Gun";
+          }
+        } else if (average > 80) {
+          audioMeter.style.background = '#fcc419'; 
         } else {
-          audioMeter.style.background = '#2f9e44';
+          audioMeter.style.background = '#2f9e44'; 
         }
         requestAnimationFrame(checkAudioVolume);
       }
@@ -608,14 +576,12 @@
       source.connect(limiter).connect(dest);
       audioCtx.resume().catch(() => {});
       return dest.stream.getAudioTracks()[0] || rawTrack;
-    } catch (e) {
-      return rawTrack; 
-    }
+    } catch (e) { return rawTrack; }
   }
 
   async function startCamera() {
     if (!window.isSecureContext) {
-      permError.textContent = 'This page must be served over HTTPS (or localhost) for the camera to work.';
+      permError.textContent = 'HTTPS is required for camera and sound processing functionality.';
       return;
     }
     try {
@@ -630,81 +596,81 @@
           frameRate: { ideal: 60 },
           zoom: true
         },
-        audio: {
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false
-        }
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
       });
       cameraStream = stream;
       limitedAudioTrack = buildLimitedAudioTrack(stream.getAudioTracks()[0] || null);
       zoomTrack = stream.getVideoTracks()[0] || null;
-      digitalZoomFactor = 1;
-      zoomCaps = null;
-      try {
-        const caps = zoomTrack && zoomTrack.getCapabilities ? zoomTrack.getCapabilities() : null;
-        if (caps && caps.zoom) zoomCaps = caps.zoom; 
-      } catch (e) {}
-
+      if (zoomTrack && zoomTrack.getCapabilities) {
+        try { const caps = zoomTrack.getCapabilities(); if(caps.zoom) zoomCaps = caps.zoom; } catch(e){}
+      }
       video.srcObject = stream;
       await video.play();
       permOverlay.classList.add('hidden');
-      sizeCanvasToVideo();
-      requestWakeLock(); // Lock screen awake once system is functional
+      canvas.width = video.videoWidth || 1280;
+      canvas.height = video.videoHeight || 720;
+      requestWakeLock();
       requestAnimationFrame(drawLoop);
     } catch (err) {
-      permError.textContent = 'Could not access camera: ' + (err.message || err.name);
+      permError.textContent = 'Could not access peripherals: ' + err.name;
     }
   }
 
-  function sizeCanvasToVideo() {
-    const vw = video.videoWidth || 1280;
-    const vh = video.videoHeight || 720;
-    canvas.width = vw;
-    canvas.height = vh;
-  }
-
-  async function flipCamera() {
-    if (recordingState !== 'idle') return; 
+  flipBtn.addEventListener('click', async () => {
+    if (recordingState !== 'idle') return;
     facingMode = facingMode === 'environment' ? 'user' : 'environment';
     if (cameraStream) cameraStream.getTracks().forEach(t => t.stop());
     await startCamera();
-  }
-
-  flipBtn.addEventListener('click', flipCamera);
+  });
   permBtn.addEventListener('click', startCamera);
 
-  let orientationDebounce = null;
-  function handleOrientationChange() {
-    if (!cameraStream) return;
-    clearTimeout(orientationDebounce);
-    orientationDebounce = setTimeout(() => {
-      if (recordingState !== 'idle') return; 
-      cameraStream.getTracks().forEach(t => t.stop());
-      startCamera();
-    }, 350);
-  }
-  window.addEventListener('orientationchange', handleOrientationChange);
-  window.addEventListener('resize', handleOrientationChange);
+  audioArmBtn.addEventListener('click', () => {
+    if (clockRunning) return;
+    
+    if (isAudioArmed) {
+      isAudioArmed = false;
+      isListeningForAudio = false;
+      clearTimeout(armingTimeout);
+      audioArmBtn.classList.remove('armed');
+      audioArmBtn.style.background = '';
+      audioArmBtn.textContent = "Auto-Arm Gun";
+      return;
+    }
 
-  // ---------- Clock State & Formatter Logic ----------
+    isAudioArmed = true;
+    isListeningForAudio = false; 
+    audioArmBtn.classList.add('armed');
+    audioArmBtn.style.background = '#d9480f';
+    
+    let countdown = 3;
+    audioArmBtn.textContent = `Arming in ${countdown}...`;
+    
+    const interval = setInterval(() => {
+      countdown--;
+      if (countdown > 0 && isAudioArmed) {
+        audioArmBtn.textContent = `Arming in ${countdown}...`;
+      } else {
+        clearInterval(interval);
+      }
+    }, 1000);
 
-  function currentClockMs() {
-    return clockElapsedMs + (clockRunning ? Date.now() - clockStartPerf : 0);
-  }
+    armingTimeout = setTimeout(() => {
+      if (!isAudioArmed) return;
+      isListeningForAudio = true; 
+      audioArmBtn.style.background = '#e67e22'; 
+      audioArmBtn.textContent = "ARMED & LISTENING";
+    }, 3000);
+  });
 
-  function currentLapMs() {
-    return Math.max(0, currentClockMs() - lastLapMarkMs);
-  }
+  function currentClockMs() { return clockElapsedMs + (clockRunning ? Date.now() - clockStartPerf : 0); }
+  function currentLapMs() { return Math.max(0, currentClockMs() - lastLapMarkMs); }
 
   function formatClock(ms) {
     const isNegative = ms < 0;
     const absoluteMs = Math.abs(ms);
-    
     const totalSec = absoluteMs / 1000;
     const m = Math.floor(totalSec / 60);
     const s = totalSec - m * 60;
-    
     const sign = isNegative ? '-' : '';
     if (m === 0) return sign + s.toFixed(2);
     return `${sign}${m}:${s.toFixed(2).padStart(5, '0')}`;
@@ -713,24 +679,15 @@
   function parseClockToMs(inputStr) {
     if (!inputStr) return 0;
     inputStr = inputStr.trim();
-    
-    let isNegative = false;
-    if (inputStr.startsWith('-')) {
-      isNegative = true;
-      inputStr = inputStr.substring(1).trim(); 
-    }
-
+    let isNegative = inputStr.startsWith('-');
+    if (isNegative) inputStr = inputStr.substring(1).trim();
     let calculatedMs = 0;
     if (inputStr.includes(':')) {
       const parts = inputStr.split(':');
-      const minutes = parseFloat(parts[0]) || 0;
-      const seconds = parseFloat(parts[1]) || 0;
-      calculatedMs = Math.round((minutes * 60 + seconds) * 1000);
+      calculatedMs = Math.round(((parseFloat(parts[0])||0)*60 + (parseFloat(parts[1])||0))*1000);
     } else {
-      const seconds = parseFloat(inputStr) || 0;
-      calculatedMs = Math.round(seconds * 1000);
+      calculatedMs = Math.round((parseFloat(inputStr)||0)*1000);
     }
-
     return isNegative ? -calculatedMs : calculatedMs;
   }
 
@@ -741,8 +698,6 @@
     clockBtn.textContent = 'Stop clock';
     clockBtn.classList.add('active');
     resetClockBtn.disabled = true;
-    localStorage.setItem('stopwatch_running', 'true');
-    localStorage.setItem('stopwatch_start_time', clockStartPerf - clockElapsedMs);
   }
 
   function stopClockNow() {
@@ -752,619 +707,243 @@
     clockBtn.textContent = 'Start clock';
     clockBtn.classList.remove('active');
     resetClockBtn.disabled = false;
-    localStorage.setItem('stopwatch_running', 'false');
-    localStorage.setItem('stopwatch_elapsed', clockElapsedMs);
   }
 
-  function loadClockFromStorage() {
-    const isRunning = localStorage.getItem('stopwatch_running') === 'true';
-    if (isRunning) {
-      const savedStartTime = Number(localStorage.getItem('stopwatch_start_time'));
-      if (savedStartTime) {
-        clockStartPerf = Date.now();
-        clockElapsedMs = Date.now() - savedStartTime;
-        clockRunning = true;
-        clockBtn.textContent = 'Stop clock';
-        clockBtn.classList.add('active');
-        resetClockBtn.disabled = true;
-      }
-    } else {
-      clockElapsedMs = Number(localStorage.getItem('stopwatch_elapsed')) || 0;
-      if (clockElapsedMs > 0) {
-        resetClockBtn.disabled = false;
-      }
-    }
-  }
-
-  clockBtn.addEventListener('click', () => {
-    if (clockRunning) stopClockNow(); else startClockNow();
-  });
-
+  clockBtn.addEventListener('click', () => { if (clockRunning) stopClockNow(); else startClockNow(); });
   resetClockBtn.addEventListener('click', () => {
     if (clockRunning) return;
-    clockElapsedMs = 0;
-    lastLapMarkMs = 0;
-    lapUsed = false;
+    clockElapsedMs = 0; lastLapMarkMs = 0; lapUsed = false;
     resetClockBtn.disabled = true;
-    localStorage.removeItem('stopwatch_running');
-    localStorage.removeItem('stopwatch_start_time');
-    localStorage.removeItem('stopwatch_elapsed');
   });
+  lapBtn.addEventListener('click', () => { lastLapMarkMs = currentClockMs(); lapUsed = true; });
 
-  lapBtn.addEventListener('click', () => {
-    lastLapMarkMs = currentClockMs();
-    lapUsed = true;
-  });
-
-  // ---------- Pinch-to-zoom ----------
-
-  let pinchActive = false;
-  let pinchStartDist = 0;
-  let pinchStartZoomValue = 1;
-
-  function touchDistance(touches) {
-    const dx = touches[0].clientX - touches[1].clientX;
-    const dy = touches[0].clientY - touches[1].clientY;
-    return Math.sqrt(dx * dx + dy * dy);
-  }
-
-  function currentZoomValue() {
-    if (zoomCaps) {
-      const settings = zoomTrack && zoomTrack.getSettings ? zoomTrack.getSettings() : null;
-      return (settings && typeof settings.zoom === 'number') ? settings.zoom : zoomCaps.min;
-    }
-    return digitalZoomFactor;
-  }
-
-  function showZoomIndicator(text) {
-    zoomIndicator.textContent = text;
-    zoomIndicator.classList.add('show');
-    clearTimeout(showZoomIndicator._t);
-    showZoomIndicator._t = setTimeout(() => zoomIndicator.classList.remove('show'), 1200);
-  }
-
-  function applyZoomValue(value) {
-    if (zoomCaps) {
-      const clamped = Math.min(zoomCaps.max, Math.max(zoomCaps.min, value));
-      if (zoomTrack && zoomTrack.applyConstraints) {
-        zoomTrack.applyConstraints({ advanced: [{ zoom: clamped }] }).catch(() => {});
-      }
-      showZoomIndicator(clamped.toFixed(1) + 'x');
-    } else {
-      const clamped = Math.min(4, Math.max(1, value));
-      digitalZoomFactor = clamped;
-      showZoomIndicator(clamped.toFixed(1) + 'x (digital)');
-    }
-  }
-
-  stage.addEventListener('touchstart', e => {
+  let pinchActive = false, pinchStartDist = 0, pinchStartZoomValue = 1;
+  document.getElementById('stage').addEventListener('touchstart', e => {
     if (e.touches.length === 2) {
       pinchActive = true;
-      pinchStartDist = touchDistance(e.touches);
-      pinchStartZoomValue = currentZoomValue();
+      pinchStartDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      pinchStartZoomValue = zoomCaps ? (zoomTrack.getSettings().zoom || zoomCaps.min) : digitalZoomFactor;
     }
   }, { passive: true });
-
-  stage.addEventListener('touchmove', e => {
+  document.getElementById('stage').addEventListener('touchmove', e => {
     if (pinchActive && e.touches.length === 2) {
-      e.preventDefault(); 
-      const dist = touchDistance(e.touches);
-      if (pinchStartDist > 0) {
-        const ratio = dist / pinchStartDist;
-        applyZoomValue(pinchStartZoomValue * ratio);
+      e.preventDefault();
+      const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      const ratio = dist / pinchStartDist;
+      const target = pinchStartZoomValue * ratio;
+      if (zoomCaps) {
+        const clamped = Math.min(zoomCaps.max, Math.max(zoomCaps.min, target));
+        zoomTrack.applyConstraints({ advanced: [{ zoom: clamped }] }).catch(() => {});
+        zoomIndicator.textContent = clamped.toFixed(1) + 'x';
+      } else {
+        digitalZoomFactor = Math.min(4, Math.max(1, target));
+        zoomIndicator.textContent = digitalZoomFactor.toFixed(1) + 'x (digital)';
       }
+      zoomIndicator.classList.add('show');
+      clearTimeout(window._zT); window._zT = setTimeout(() => zoomIndicator.classList.remove('show'), 1000);
     }
   }, { passive: false });
 
-  stage.addEventListener('touchend', e => {
-    if (e.touches.length < 2) pinchActive = false;
-  }, { passive: true });
-
-  stage.addEventListener('touchcancel', () => { pinchActive = false; }, { passive: true });
-
   function drawLoop() {
-    if (recordingState === 'idle' && video.videoWidth &&
-        (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight)) {
-      sizeCanvasToVideo();
-    }
     if (video.readyState >= 2) {
-      if (!zoomCaps && digitalZoomFactor > 1 && video.videoWidth) {
-        const sw = video.videoWidth / digitalZoomFactor;
-        const sh = video.videoHeight / digitalZoomFactor;
-        const sx = (video.videoWidth - sw) / 2;
-        const sy = (video.videoHeight - sh) / 2;
-        ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+      if (!zoomCaps && digitalZoomFactor > 1) {
+        const sw = video.videoWidth / digitalZoomFactor, sh = video.videoHeight / digitalZoomFactor;
+        ctx.drawImage(video, (video.videoWidth-sw)/2, (video.videoHeight-sh)/2, sw, sh, 0, 0, canvas.width, canvas.height);
       } else {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       }
-      drawClockOverlay();
+      const fSize = Math.round(canvas.width * 0.045);
+      ctx.font = `700 ${fSize}px ui-monospace, monospace`;
+      ctx.lineJoin = 'round'; ctx.lineWidth = fSize * 0.15; ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+      
+      const txt = formatClock(currentClockMs());
+      ctx.strokeText(txt, fSize * 0.5, canvas.height - fSize * 0.5);
+      ctx.fillStyle = clockRunning ? '#f4f1ea' : '#c9a227';
+      ctx.fillText(txt, fSize * 0.5, canvas.height - fSize * 0.5);
+
+      if (lapUsed) {
+        const lapTxt = formatClock(currentLapMs());
+        ctx.font = `700 ${Math.round(fSize*0.6)}px ui-monospace, monospace`;
+        ctx.strokeText(lapTxt, fSize * 0.5, canvas.height - fSize * 1.8);
+        ctx.fillStyle = '#f4f1ea';
+        ctx.fillText(lapTxt, fSize * 0.5, canvas.height - fSize * 1.8);
+      }
     }
     requestAnimationFrame(drawLoop);
   }
 
-  function drawTimeText(text, x, baselineY, fontSize, color) {
-    ctx.font = `700 ${fontSize}px ui-monospace, 'SF Mono', 'Roboto Mono', Menlo, Monaco, Consolas, monospace`;
-    ctx.textBaseline = 'alphabetic';
-    ctx.lineJoin = 'round';
-    ctx.lineWidth = Math.max(2, fontSize * 0.14);
-    ctx.strokeStyle = 'rgba(0,0,0,0.8)';
-    ctx.strokeText(text, x, baselineY);
-    ctx.fillStyle = color;
-    ctx.fillText(text, x, baselineY);
-  }
-
-  function drawClockOverlay() {
-    const totalFontSize = Math.round(canvas.width * 0.045);
-    const lapFontSize = Math.round(totalFontSize * 0.6);
-    const x = totalFontSize * 0.5;
-    const totalBaselineY = canvas.height - totalFontSize * 0.5;
-    const lapBaselineY = totalBaselineY - totalFontSize * 1.15;
-
-    const totalColor = clockRunning ? '#f4f1ea' : '#c9a227';
-    drawTimeText(formatClock(currentClockMs()), x, totalBaselineY, totalFontSize, totalColor);
-
-    if (lapUsed) {
-      drawTimeText(formatClock(currentLapMs()), x, lapBaselineY, lapFontSize, '#f4f1ea');
-    }
-  }
-
-  // ---------- Recording & File Selection Triggers ----------
-
   loadVideoBtn.addEventListener('click', () => videoFileInput.click());
+  
   videoFileInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
+    const file = e.target.files[0]; if (!file) return;
     if (lastBlobUrl) URL.revokeObjectURL(lastBlobUrl);
     lastBlobUrl = URL.createObjectURL(file);
+    
+    resultVideo.pause();
     resultVideo.src = lastBlobUrl;
+    resultVideo.load();
+    resultVideo.muted = true; 
+    bigPlayBtn.classList.remove('hidden');
     
-    videoTimelineMap = [{ videoStart: 0, raceStart: 0 }];
-    currentSyncLabelString = "0.00";
-    syncVideoBtn.textContent = "Sync Clock: " + currentSyncLabelString;
-    syncVideoBtn.classList.remove('has-offset');
-    
-    isImportedVideoMode = true;
-    finishersList = [];
-    renderResultsTable();
-    
-    shareBtn.style.display = 'none';
-    downloadBtn.style.display = 'none';
-    syncVideoBtn.style.display = 'inline-block';
+    resultVideo.play().then(() => {
+      resultVideo.pause(); 
+    }).catch(err => console.log("Autoplay context ready."));
 
+    videoTimelineMap = [{ videoStart: 0, raceStart: 0 }];
+    isImportedVideoMode = true; finishersList = []; renderResultsTable();
+    shareBtn.style.display = 'none'; downloadBtn.style.display = 'none'; syncVideoBtn.style.display = 'inline-block';
     resultOverlay.classList.add('show');
-    videoFileInput.value = ''; 
+  });
+
+  flashZeroBtn.addEventListener('click', () => {
+    resultVideo.pause();
+    bigPlayBtn.classList.remove('hidden');
+    const currentVideoMs = resultVideo.currentTime * 1000;
+    videoTimelineMap = [{ videoStart: currentVideoMs, raceStart: 0 }];
+    videoTimelineMap.unshift({ videoStart: 0, raceStart: -currentVideoMs });
+    currentSyncLabelString = "0.00 (Flash Checked)";
+    alert(`Clock Zero anchored to this frame! Everything backward from here is now calibrated as a negative countdown.`);
+    if (finishersList.length > 0) {
+      finishersList = [];
+      renderResultsTable();
+    }
   });
 
   syncVideoBtn.addEventListener('click', () => {
     resultVideo.pause();
-    const currentVideoTimeFormatted = formatClock(resultVideo.currentTime * 1000);
-    
-    const promptValue = prompt(
-      `Sync Calibration:\nScrub to any reference frame. What should the race time be at this exact spot?\n\nCurrently viewed video timestamp: ${currentVideoTimeFormatted}\n\n(Examples: 14.20, 1:05.45, or negative times like -1:00 if the video started before the clock)`,
-      currentSyncLabelString
-    );
-    
-    if (promptValue === null) return; 
-    
+    bigPlayBtn.classList.remove('hidden');
+    const promptValue = prompt("Manual Sync Entry. Enter actual race clock time seen on screen:", currentSyncLabelString);
+    if (promptValue === null) return;
     const targetRaceMs = parseClockToMs(promptValue);
-    const currentVideoMs = resultVideo.currentTime * 1000;
-    const calculatedBaseMs = targetRaceMs - currentVideoMs;
-    
-    videoTimelineMap = [{ videoStart: 0, raceStart: calculatedBaseMs }];
-    
+    videoTimelineMap = [{ videoStart: 0, raceStart: targetRaceMs - (resultVideo.currentTime * 1000) }];
     currentSyncLabelString = promptValue.trim();
-    syncVideoBtn.textContent = "Synced @ " + currentSyncLabelString;
-    syncVideoBtn.classList.add('has-offset');
-    
-    if (finishersList.length > 0) {
-      if (confirm("Recalibrating the clock changes the math timeline. Clear previously marked splits?")) {
-        finishersList = [];
-        renderResultsTable();
-      }
-    }
   });
 
-  function pickMimeType() {
-    const candidates = ['video/webm;codecs=vp8,opus', 'video/webm;codecs=vp8', 'video/webm'];
-    for (const c of candidates) {
-      if (window.MediaRecorder && MediaRecorder.isTypeSupported(c)) return c;
-    }
-    return '';
-  }
-
-  async function lockOrientationForRecording() {
-    const type = window.innerWidth >= window.innerHeight ? 'landscape' : 'portrait';
-    if (!document.fullscreenElement) {
-      try { await document.documentElement.requestFullscreen(); } catch (e) {}
-    }
-    if (!screen.orientation || !screen.orientation.lock) return;
-    try { await screen.orientation.lock(type); } catch (e) {}
-  }
-
-  function unlockOrientation() {
-    try { screen.orientation.unlock(); } catch (e) {}
-    if (document.fullscreenElement) {
-      try { document.exitFullscreen(); } catch (e) {}
-    }
-  }
-
   function startRecording() {
-    const canvasStream = canvas.captureStream(60);
-    const audioTracks = limitedAudioTrack
-      ? [limitedAudioTrack]
-      : (cameraStream ? cameraStream.getAudioTracks() : []);
-    const combined = new MediaStream([...canvasStream.getVideoTracks(), ...audioTracks]);
-
-    const mimeType = pickMimeType();
-    const recorderOpts = { videoBitsPerSecond: 8_000_000, audioBitsPerSecond: 128_000 };
-    if (mimeType) recorderOpts.mimeType = mimeType;
-    recorder = new MediaRecorder(combined, recorderOpts);
-
+    const combined = new MediaStream([...canvas.captureStream(60).getVideoTracks(), ...(limitedAudioTrack?[limitedAudioTrack]:(cameraStream?cameraStream.getAudioTracks():[]))]);
+    recorder = new MediaRecorder(combined, { videoBitsPerSecond: 8_000_000 });
     recordedChunks = [];
-    recorder.ondataavailable = e => { if (e.data && e.data.size > 0) recordedChunks.push(e.data); };
-    recorder.onstop = onRecordingStopped;
-
-    recordingState = 'starting';
-    updateRecUI();
-
-    setTimeout(() => {
-      if (recordingState !== 'starting' || !recorder) return;
-      recorder.start(1000);
-      lockOrientationForRecording();
-      recordingActiveMs = 0;
-      activeSegmentStart = performance.now();
-      recordingState = 'recording';
-      
-      videoTimelineMap = [{ videoStart: 0, raceStart: currentClockMs() }];
-      updateRecUI();
-    }, 200);
-  }
-
-  function pauseRecording() {
-    if (!recorder || recordingState !== 'recording') return;
-    recorder.pause();
-    recordingActiveMs += performance.now() - activeSegmentStart;
-    recordingState = 'paused';
-    updateRecUI();
-  }
-
-  function resumeRecording() {
-    if (!recorder || recordingState !== 'paused') return;
-    recorder.resume();
-    activeSegmentStart = performance.now();
-    recordingState = 'recording';
-    
-    videoTimelineMap.push({
-      videoStart: recordingActiveMs,
-      raceStart: currentClockMs()
-    });
-    updateRecUI();
-  }
-
-  function finishRecording() {
-    if (!recorder || recordingState === 'idle' || recordingState === 'starting') return;
-    lastRecordingDurationMs = currentActiveDurationMs();
-    recorder.stop();
-    recordingState = 'idle';
-    unlockOrientation();
-    updateRecUI();
-  }
-
-  function updateRecUI() {
-    const visualState = recordingState === 'starting' ? 'recording' : recordingState;
-    recMainBtn.classList.remove('state-idle', 'state-recording', 'state-paused');
-    recMainBtn.classList.add('state-' + visualState);
-
-    if (recordingState === 'idle') {
-      recIcon.innerHTML = '';
-    } else if (visualState === 'recording') {
-      recIcon.innerHTML = '&#10074;&#10074;'; 
-    } else {
-      recIcon.innerHTML = '&#9654;'; 
-    }
-
-    finishBtn.disabled = (recordingState === 'idle' || recordingState === 'starting');
-    finishBtn.classList.toggle('ready', recordingState === 'recording' || recordingState === 'paused');
-
-    recBadge.classList.toggle('live', recordingState !== 'idle');
-    recBadge.classList.toggle('paused', recordingState === 'paused');
-    recDot.classList.toggle('blink', visualState === 'recording');
-    recLabel.textContent = recordingState === 'paused' ? 'PAUSED' : 'REC';
-  }
-
-  function onRecordingStopped() {
-    const buggyBlob = new Blob(recordedChunks, { type: 'video/webm' });
-    const useBlob = (blob) => {
-      if (lastBlobUrl) URL.revokeObjectURL(lastBlobUrl);
-      lastBlobUrl = URL.createObjectURL(blob);
-      resultVideo.src = lastBlobUrl;
-      
-      isImportedVideoMode = false;
-      finishersList = [];
-      renderResultsTable();
-
-      shareBtn.style.display = 'inline-block';
-      downloadBtn.style.display = 'inline-block';
-      syncVideoBtn.style.display = 'none';
-
-      resultOverlay.classList.add('show');
-      window.__lastBlob = blob;
+    recorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+    recorder.onstop = () => {
+      const b = new Blob(recordedChunks, { type: 'video/webm' });
+      const process = (blob) => {
+        if (lastBlobUrl) URL.revokeObjectURL(lastBlobUrl);
+        lastBlobUrl = URL.createObjectURL(blob); 
+        resultVideo.src = lastBlobUrl;
+        resultVideo.load();
+        bigPlayBtn.classList.remove('hidden');
+        
+        isImportedVideoMode = false; finishersList = []; renderResultsTable();
+        shareBtn.style.display = 'inline-block'; downloadBtn.style.display = 'inline-block'; syncVideoBtn.style.display = 'none';
+        resultOverlay.classList.add('show'); window.__lastBlob = blob;
+      };
+      if (window.ysFixWebmDuration && lastRecordingDurationMs > 0) {
+        window.ysFixWebmDuration(b, lastRecordingDurationMs, { logger: false }).then(process).catch(()=>process(b));
+      } else { process(b); }
     };
-
-    if (window.ysFixWebmDuration && lastRecordingDurationMs > 0) {
-      try {
-        window.ysFixWebmDuration(buggyBlob, lastRecordingDurationMs, { logger: false })
-          .then(useBlob)
-          .catch(() => useBlob(buggyBlob));
-      } catch (e) { useBlob(buggyBlob); }
-    } else { useBlob(buggyBlob); }
+    recorder.start(1000); recordingActiveMs = 0; activeSegmentStart = performance.now(); recordingState = 'recording';
+    videoTimelineMap = [{ videoStart: 0, raceStart: currentClockMs() }];
+    updateRecUI();
   }
 
   recMainBtn.addEventListener('click', () => {
     if (recordingState === 'idle') startRecording();
-    else if (recordingState === 'recording') pauseRecording();
-    else if (recordingState === 'paused') resumeRecording();
+    else if (recordingState === 'recording') { recorder.pause(); recordingActiveMs += performance.now()-activeSegmentStart; recordingState = 'paused'; updateRecUI(); }
+    else if (recordingState === 'paused') { recorder.resume(); activeSegmentStart = performance.now(); recordingState = 'recording'; videoTimelineMap.push({ videoStart: recordingActiveMs, raceStart: currentClockMs() }); updateRecUI(); }
   });
-  finishBtn.addEventListener('click', finishRecording);
+  finishBtn.addEventListener('click', () => { lastRecordingDurationMs = currentActiveDurationMs(); recorder.stop(); recordingState = 'idle'; updateRecUI(); });
 
-  // ---------- Review Screen Actions & Translation Core ----------
+  function updateRecUI() {
+    recMainBtn.className = 'state-' + (recordingState==='starting'?'recording':recordingState);
+    recIcon.innerHTML = recordingState === 'recording' ? '&#10074;&#10074;' : '&#9654;';
+    finishBtn.disabled = (recordingState === 'idle');
+    recBadge.className = 'live' + (recordingState==='paused'?' paused':'');
+    recDot.className = recordingState==='recording'?'blink':'';
+    recLabel.textContent = recordingState==='paused'?'PAUSED':'REC';
+  }
 
   let FRAME_STEP_SEC=1/60;
-  function stepResultFrame(direction) {
-    if (!isFinite(resultVideo.duration)) return;
-    resultVideo.pause();
-    const t = resultVideo.currentTime + direction * FRAME_STEP_SEC;
-    resultVideo.currentTime = Math.max(0, Math.min(resultVideo.duration, t));
+  function step(d) { 
+    resultVideo.pause(); 
+    bigPlayBtn.classList.remove('hidden');
+    resultVideo.currentTime = Math.max(0, Math.min(resultVideo.duration, resultVideo.currentTime + d * FRAME_STEP_SEC)); 
   }
-  prevFrameBtn.addEventListener('click', () => stepResultFrame(-1));
-  nextFrameBtn.addEventListener('click',()=>stepResultFrame(1));back5Btn.addEventListener('click',()=>stepResultFrame(-5));fwd5Btn.addEventListener('click',()=>stepResultFrame(5));
+  prevFrameBtn.onclick=()=>step(-1); nextFrameBtn.onclick=()=>step(1); back5Btn.onclick=()=>step(-5); fwd5Btn.onclick=()=>step(5);
   
-  function updateSpeedButtonsUI() {
-    document.querySelectorAll('.speed').forEach(btn => btn.classList.remove('activeSpeed'));
-    if (resultVideo.playbackRate === 1) {
-      document.getElementById('speed1x').classList.add('activeSpeed');
-    } else {
-      document.getElementById('speedSlow').classList.add('activeSpeed');
-    }
-  }
-
   document.querySelectorAll('.speed').forEach(b=>{
     b.onclick=()=>{
       resultVideo.playbackRate=parseFloat(b.dataset.speed);
-      updateSpeedButtonsUI();
+      document.querySelectorAll('.speed').forEach(s=>s.classList.remove('activeSpeed')); b.classList.add('activeSpeed');
     };
   });
-
-  // Toggle speed instantly on double tap for fast review
-  let lastVideoTapTime = 0;
-  resultVideoWrap.addEventListener('click', (e) => {
-    const currentTime = Date.now();
-    if (currentTime - lastVideoTapTime < 300) {
-      // Double tap detected
-      resultVideo.playbackRate = (resultVideo.playbackRate === 1) ? 0.1 : 1;
-      updateSpeedButtonsUI();
+  
+  // Clean, unified playback controller on the video window container
+  let sX=0, sT=0, sM=false;
+  resultVideoWrap.addEventListener('touchstart', e => { 
+    sX=e.touches[0].clientX; sT=resultVideo.currentTime; sM=false; 
+  }, { passive: true });
+  
+  resultVideoWrap.addEventListener('touchmove', e => { 
+    const dx=e.touches[0].clientX-sX; 
+    if(Math.abs(dx)>6) sM=true; 
+    if(sM) { 
+      resultVideo.pause(); 
+      bigPlayBtn.classList.remove('hidden');
+      resultVideo.currentTime=Math.max(0,Math.min(resultVideo.duration, sT+dx*0.012)); 
     }
-    lastVideoTapTime = currentTime;
+  }, { passive: false });
+  
+  resultVideoWrap.addEventListener('touchend', () => { 
+    if(!sM) { toggleVideoPlayback(); }
   });
 
-  function markCurrentFinisher() {
-    if (!isFinite(resultVideo.duration)) return;
-    
-    const videoOffsetMs = resultVideo.currentTime * 1000;
-    let matchingSegment = videoTimelineMap[0] || { videoStart: 0, raceStart: 0 };
-    for (let i = 0; i < videoTimelineMap.length; i++) {
-      if (videoOffsetMs >= videoTimelineMap[i].videoStart) {
-        matchingSegment = videoTimelineMap[i];
-      }
+  // Desktop/Mouse click implementation
+  resultVideoWrap.addEventListener('click', (e) => {
+    // If it's a simulated or true mouse click and not part of a swipe exit gesture
+    if(!sM) { toggleVideoPlayback(); }
+  });
+
+  function toggleVideoPlayback() {
+    if (resultVideo.paused) {
+      resultVideo.play().then(() => {
+        bigPlayBtn.classList.add('hidden');
+      }).catch(() => {});
+    } else {
+      resultVideo.pause();
+      bigPlayBtn.classList.remove('hidden');
     }
-    
-    const elapsedInSegment = videoOffsetMs - matchingSegment.videoStart;
-    const calculatedRaceMs = matchingSegment.raceStart + elapsedInSegment;
-    const formattedTime = formatClock(calculatedRaceMs);
-    
-    finishersList.push(formattedTime);
+  }
+
+  function markCurrentFinisher() {
+    const vMs = resultVideo.currentTime * 1000;
+    let seg = videoTimelineMap[0] || { videoStart: 0, raceStart: 0 };
+    for (let i = 0; i < videoTimelineMap.length; i++) { if (vMs >= videoTimelineMap[i].videoStart) seg = videoTimelineMap[i]; }
+    finishersList.push(formatClock(seg.raceStart + (vMs - seg.videoStart)));
     renderResultsTable();
   }
 
   function renderResultsTable() {
     resultsBody.innerHTML = '';
-    finishersList.forEach((timeStr, idx) => {
+    finishersList.forEach((t, i) => {
       const tr = document.createElement('tr');
-      const tdPlace = document.createElement('td');
-      tdPlace.textContent = idx + 1;
-      
-      const tdTime = document.createElement('td');
-      tdTime.style.fontWeight = 'bold';
-      tdTime.textContent = timeStr;
-      
-      const tdAction = document.createElement('td');
-      tdAction.style.textAlign = 'center';
-      const delBtn = document.createElement('button');
-      delBtn.className = 'deleteRowBtn';
-      delBtn.innerHTML = '&times;';
-      delBtn.onclick = () => {
-        finishersList.splice(idx, 1);
-        renderResultsTable();
-      };
-      tdAction.appendChild(delBtn);
-      
-      tr.appendChild(tdPlace);
-      tr.appendChild(tdTime);
-      tr.appendChild(tdAction);
+      tr.innerHTML = `<td>${i+1}</td><td style="font-weight:bold;">${t}</td><td style="text-align:center;"><button class="deleteRowBtn">&times;</button></td>`;
+      tr.querySelector('.deleteRowBtn').onclick = () => { finishersList.splice(i,1); renderResultsTable(); };
       resultsBody.appendChild(tr);
     });
   }
 
-  markFinisherBtn.addEventListener('click', (e) => { e.preventDefault(); markCurrentFinisher(); });
-  window.addEventListener('keydown', (e) => {
-    if (resultOverlay.classList.contains('show') && e.code === 'Space') {
-      e.preventDefault(); markCurrentFinisher();
-    }
-  });
+  markFinisherBtn.onclick = markCurrentFinisher;
+  window.onkeydown = (e) => { if (resultOverlay.classList.contains('show') && e.code === 'Space') { e.preventDefault(); markCurrentFinisher(); } };
 
-  exportCsvBtn.addEventListener('click', () => {
-    if (finishersList.length === 0) {
-      alert('No finishers marked yet.');
-      return;
-    }
-    
-    // Organizable Context Naming Export Improvement
-    const raceNamePrompt = prompt("Optional: Enter a file prefix / race description name\n(e.g., Boys 100m, Heat 2)", "");
-    const namePrefix = raceNamePrompt ? raceNamePrompt.trim().replace(/[^a-z0-9]/gi, '_') + "-" : "";
-    
-    let csvContent = 'Place,True Race Time\n';
-    finishersList.forEach((timeStr, idx) => { csvContent += `${idx + 1},${timeStr}\n`; });
-    
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `${namePrefix}race-results-${Date.now()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  });
+  exportCsvBtn.onclick = () => {
+    const p = prompt("Optional file description name prefix:", "");
+    let csv = 'Place,True Race Time\n'; finishersList.forEach((t, i) => csv += `${i+1},${t}\n`);
+    const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
+    link.download = `${p?p.trim().replace(/[^a-z0-9]/gi,'_')+'-':''}results-${Date.now()}.csv`; link.click();
+  };
 
-  // ---------- Video Player Scrubbing Logic ----------
-
-  const DRAG_SECONDS_PER_PIXEL = 0.012; 
-  const TAP_MOVE_THRESHOLD = 6; 
-  let scrubStartX = 0;
-  let scrubStartTime = 0;
-  let scrubMoved = false;
-  let lastTouchActivity = 0; 
-
-  function scrubDragStart(clientX) {
-    scrubStartX = clientX;
-    scrubStartTime = resultVideo.currentTime;
-    scrubMoved = false;
-  }
-  function scrubDragMove(clientX) {
-    if (!isFinite(resultVideo.duration)) return;
-    const dx = clientX - scrubStartX;
-    if (Math.abs(dx) > TAP_MOVE_THRESHOLD) scrubMoved = true;
-    if (!scrubMoved) return;
-    resultVideo.pause();
-    const t = scrubStartTime + dx * DRAG_SECONDS_PER_PIXEL;
-    resultVideo.currentTime = Math.max(0, Math.min(resultVideo.duration, t));
-  }
-  function scrubDragEnd() {
-    if (!scrubMoved) {
-      if (resultVideo.paused) resultVideo.play().catch(() => {});
-      else resultVideo.pause();
-    }
-  }
-
-  resultVideoWrap.addEventListener('touchstart', e => {
-    lastTouchActivity = Date.now();
-    scrubDragStart(e.touches[0].clientX);
-  }, { passive: true });
-  resultVideoWrap.addEventListener('touchmove', e => {
-    lastTouchActivity = Date.now();
-    scrubDragMove(e.touches[0].clientX);
-  }, { passive: true });
-  resultVideoWrap.addEventListener('touchend', () => {
-    lastTouchActivity = Date.now();
-    scrubDragEnd();
-  });
-
-  let mouseScrubbing = false;
-  resultVideoWrap.addEventListener('mousedown', e => {
-    if (Date.now() - lastTouchActivity < 800) return;
-    mouseScrubbing = true;
-    scrubDragStart(e.clientX);
-  });
-  window.addEventListener('mousemove', e => { if (mouseScrubbing) scrubDragMove(e.clientX); });
-  window.addEventListener('mouseup', () => { if (mouseScrubbing) { scrubDragEnd(); mouseScrubbing = false; } });
-
-  resultVideo.addEventListener('play', () => { bigPlayBtn.classList.add('hidden'); });
-  resultVideo.addEventListener('pause', () => { bigPlayBtn.classList.remove('hidden'); });
-
-  function makeVideoFile() {
-    const blob = window.__lastBlob;
-    if (!blob) return null;
-    return new File([blob], `stopwatch-video-${Date.now()}.webm`, { type: 'video/webm' });
-  }
-
-  async function shareFile() {
-    const file = makeVideoFile();
-    if (!file) return false;
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      try {
-        await navigator.share({ files: [file], title: 'Race video' });
-        return true;
-      } catch (e) { return false; }
-    }
-    return false;
-  }
-
-  shareBtn.addEventListener('click', async () => {
-    const file = makeVideoFile();
-    if (!file) return;
-    if (navigator.canShare && navigator.canShare({ files: [file] })) { await shareFile(); } else { downloadBlob(); }
-  });
-
-  downloadBtn.addEventListener('click', async () => {
-    if (isIOS()) {
-      const shared = await shareFile();
-      if (!shared) { alert('Tap Share instead, then choose \"Save Video\" to save it to Photos.'); }
-      return;
-    }
-    downloadBlob();
-  });
-
-  function downloadBlob() {
-    const blob = window.__lastBlob;
-    if (!blob) return;
-    const a = document.createElement('a');
-    a.href = lastBlobUrl;
-    a.download = `stopwatch-video-${Date.now()}.webm`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  }
-
-  discardBtn.addEventListener('click', () => {
-    const confMessage = isImportedVideoMode 
-      ? 'Are you sure you want to exit review mode? Your current data selections will be lost.'
-      : 'Are you sure you want to discard this video and your results data?';
-      
-    if (confirm(confMessage)) {
-      resultOverlay.classList.remove('show');
-      resultVideo.pause();
-      resultVideo.removeAttribute('src');
-      recordedChunks = [];
-      finishersList = [];
-      videoTimelineMap = [];
-      renderResultsTable();
-    }
-  });
-
-  // ---------- PWA deployment installations ----------
-
-  let deferredPrompt = null;
-  window.addEventListener('beforeinstallprompt', e => {
-    e.preventDefault();
-    deferredPrompt = e;
-    installBtn.style.display = 'block';
-  });
-  installBtn.addEventListener('click', async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    await deferredPrompt.userChoice;
-    deferredPrompt = null;
-    installBtn.style.display = 'none';
-  });
-
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('sw.js').catch(() => {});
-    });
-  }
-
-  loadClockFromStorage();
-  updateRecUI();
+  discardBtn.onclick = () => { if(confirm('Exit review mode? Unsaved selections will be lost.')) { resultOverlay.classList.remove('show'); resultVideo.pause(); recordedChunks=[]; finishersList=[]; videoTimelineMap=[]; } };
+  downloadBtn.onclick = () => { const a=document.createElement('a'); a.href=lastBlobUrl; a.download=`race-${Date.now()}.webm`; a.click(); };
 })();
 </script>
 </body>
