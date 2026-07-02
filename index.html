@@ -318,6 +318,7 @@
   }
   #exportCsvBtn{background:#1c7ed6;color:#fff;}
   #burnVideoBtn{background:#e03131;color:#fff;font-weight:bold;}
+  #burnSmoothBtn{background:#9c36b5;color:#fff;font-weight:bold;}
   #downloadBtn{background:var(--paper);color:var(--ink);}
   #discardBtn{background:transparent;color:#c9c4b8;border:1px solid #4a4640 !important;}
 
@@ -466,7 +467,8 @@
 
   <div id="resultBar">
     <button id="exportCsvBtn">Export CSV</button>
-    <button id="burnVideoBtn">Burn & Save Video</button>
+    <button id="burnVideoBtn">Burn Fast</button>
+    <button id="burnSmoothBtn" style="background:#9c36b5;color:#fff;">Burn Smooth</button>
     <button id="downloadBtn" style="display:none;">Download WebM</button>
     <button id="discardBtn">Discard</button>
   </div>
@@ -837,7 +839,7 @@
       isVideoSynced = false; // Lock clock presentation to 0.00 until synced
       finishersList = []; 
       renderResultsTable();
-      burnVideoBtn.style.display = 'inline-block'; downloadBtn.style.display = 'none'; syncVideoBtn.style.display = 'inline-block';
+      burnVideoBtn.style.display = 'inline-block'; burnSmoothBtn.style.display = 'inline-block'; downloadBtn.style.display = 'none'; syncVideoBtn.style.display = 'inline-block';
       resultOverlay.classList.add('show');
       drawReviewFrame();
     };
@@ -949,7 +951,8 @@
           isVideoSynced = true; // Camera recordings are always auto-synced
           finishersList = []; 
           renderResultsTable();
-          burnVideoBtn.style.display = 'none'; downloadBtn.style.display = 'inline-block'; syncVideoBtn.style.display = 'none';
+          burnVideoBtn.style.display = 'none'; burnSmoothBtn.style.display = 'none'; downloadBtn.style.display = 'inline-block'; syncVideoBtn.style.display = 'none';
+          drawLoopActive = false; // pause live canvas while review is open
           resultOverlay.classList.add('show');
           drawReviewFrame();
         };
@@ -1143,81 +1146,80 @@
     link.click();
   };
 
-  burnVideoBtn.onclick = () => {
-    resultVideo.pause();
-    burnVideoBtn.textContent = "Processing...";
-    burnVideoBtn.disabled = true;
+  const burnSmoothBtn = document.getElementById('burnSmoothBtn');
 
-    resultVideo.currentTime = 0;
+  function drawClockOnCanvas() {
+    const fSize = Math.round(resultCanvas.width * 0.045);
+    rCtx.font = `700 ${fSize}px ui-monospace, monospace`;
+    rCtx.lineJoin = 'round'; rCtx.lineWidth = fSize * 0.15; rCtx.strokeStyle = 'rgba(0,0,0,0.8)';
+    const txt = formatClock(Math.max(0, getCalculatedRaceTimeMs()));
+    rCtx.strokeText(txt, fSize * 0.5, resultCanvas.height - fSize * 0.5);
+    rCtx.fillStyle = '#f4f1ea';
+    rCtx.fillText(txt, fSize * 0.5, resultCanvas.height - fSize * 0.5);
+  }
 
-    // Detect actual framerate; fall back to 60 if not available
-    const detectedFps = (resultVideo.getVideoPlaybackQuality &&
-      resultVideo.getVideoPlaybackQuality().totalVideoFrames > 0)
-      ? null  // can't reliably get fps this way, use track below
-      : null;
-    // Best available method: MediaStream track settings
-    let burnFps = 60;
-    if (cameraStream) {
-      const vt = cameraStream.getVideoTracks()[0];
-      if (vt) burnFps = vt.getSettings().frameRate || 60;
-    }
-    // For uploaded videos, try to read from the video element via a quick frame sample
-    // We'll measure it properly: grab totalVideoFrames delta over a known duration isn't
-    // possible pre-play, so use the most reliable cross-browser fallback:
-    // requestVideoFrameCallback gives us exact timestamps if available
-    const tryGetFps = () => new Promise(resolve => {
+  function getBurnFps() {
+    return new Promise(resolve => {
+      let burnFps = 60;
+      if (cameraStream) {
+        const vt = cameraStream.getVideoTracks()[0];
+        if (vt) burnFps = vt.getSettings().frameRate || 60;
+      }
       if (!('requestVideoFrameCallback' in HTMLVideoElement.prototype)) return resolve(burnFps);
-      let t1 = null, count = 0;
+      let t1 = null;
       const sample = (now, meta) => {
-        if (t1 === null) { t1 = meta.mediaTime; resultVideo.requestVideoFrameCallback(sample); count++; }
+        if (t1 === null) { t1 = meta.mediaTime; resultVideo.requestVideoFrameCallback(sample); }
         else {
           const delta = meta.mediaTime - t1;
-          resolve(delta > 0 ? Math.round(1 / delta) : burnFps);
+          resolve(delta > 0 ? Math.max(24, Math.min(120, Math.round(1 / delta))) : burnFps);
         }
       };
       resultVideo.currentTime = 0;
       resultVideo.requestVideoFrameCallback(sample);
     });
+  }
 
-    tryGetFps().then(fps => {
-      burnFps = Math.max(24, Math.min(120, fps || 60));
-      const burnStream = resultCanvas.captureStream(burnFps);
-      // Scale bitrate with resolution and fps; floor at 8Mbps, cap at 50Mbps
-      const pixels = resultCanvas.width * resultCanvas.height;
-      const bitsPerPixelPerFrame = 0.1;
-      const targetBitrate = Math.min(50_000_000, Math.max(8_000_000, Math.round(pixels * bitsPerPixelPerFrame * burnFps)));
+  function startBurnRecorder(fps) {
+    const pixels = resultCanvas.width * resultCanvas.height;
+    const targetBitrate = Math.min(50_000_000, Math.max(8_000_000, Math.round(pixels * 0.1 * fps)));
+    const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm';
+    const burnStream = resultCanvas.captureStream(fps);
+    const burnRecorder = new MediaRecorder(burnStream, { videoBitsPerSecond: targetBitrate, mimeType });
+    const chunks = [];
+    burnRecorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+    return { burnRecorder, chunks };
+  }
 
-      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
-        ? 'video/webm;codecs=vp9' : 'video/webm';
-      const burnRecorder = new MediaRecorder(burnStream, { videoBitsPerSecond: targetBitrate, mimeType });
-      const chunks = [];
+  function finishBurn(chunks, burnBtn, origLabel) {
+    const finalBlob = new Blob(chunks, { type: 'video/webm' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(finalBlob);
+    a.download = `burned-race-${Date.now()}.webm`;
+    a.click();
+    burnBtn.textContent = origLabel;
+    burnBtn.disabled = false;
+    burnSmoothBtn.disabled = false;
+    burnVideoBtn.disabled = false;
+  }
 
-      burnRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+  // FAST BURN — frame-by-frame seek, faster than real time but may have minor judder
+  burnVideoBtn.onclick = () => {
+    resultVideo.pause();
+    burnVideoBtn.textContent = 'Processing…';
+    burnVideoBtn.disabled = true;
+    burnSmoothBtn.disabled = true;
 
-      burnRecorder.onstop = () => {
-        const finalBlob = new Blob(chunks, { type: 'video/webm' });
-        const downloadUrl = URL.createObjectURL(finalBlob);
-        const a = document.createElement('a');
-        a.href = downloadUrl;
-        a.download = `burned-race-${Date.now()}.webm`;
-        a.click();
+    getBurnFps().then(fps => {
+      const { burnRecorder, chunks } = startBurnRecorder(fps);
+      const frameInterval = 1 / fps;
 
-        burnVideoBtn.textContent = "Burn & Save Video";
-        burnVideoBtn.disabled = false;
-      };
+      burnRecorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+      burnRecorder.onstop = () => finishBurn(chunks, burnVideoBtn, 'Burn Fast');
 
-      const frameInterval = 1 / burnFps;
       resultVideo.onseeked = function handleBurnStep() {
         if (resultVideo.currentTime < resultVideo.duration) {
           rCtx.drawImage(resultVideo, 0, 0, resultCanvas.width, resultCanvas.height);
-          const fSize = Math.round(resultCanvas.width * 0.045);
-          rCtx.font = `700 ${fSize}px ui-monospace, monospace`;
-          rCtx.lineJoin = 'round'; rCtx.lineWidth = fSize * 0.15; rCtx.strokeStyle = 'rgba(0,0,0,0.8)';
-          const txt = formatClock(Math.max(0, getCalculatedRaceTimeMs()));
-          rCtx.strokeText(txt, fSize * 0.5, resultCanvas.height - fSize * 0.5);
-          rCtx.fillStyle = '#f4f1ea';
-          rCtx.fillText(txt, fSize * 0.5, resultCanvas.height - fSize * 0.5);
-
+          drawClockOnCanvas();
           resultVideo.currentTime += frameInterval;
         } else {
           resultVideo.onseeked = null;
@@ -1230,6 +1232,41 @@
     });
   };
 
+  // SMOOTH BURN — plays at real speed, guaranteed even frame timing, takes as long as the clip
+  burnSmoothBtn.onclick = () => {
+    resultVideo.pause();
+    burnSmoothBtn.textContent = 'Recording…';
+    burnSmoothBtn.disabled = true;
+    burnVideoBtn.disabled = true;
+    resultVideo.currentTime = 0;
+
+    getBurnFps().then(fps => {
+      const { burnRecorder, chunks } = startBurnRecorder(fps);
+
+      burnRecorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+      burnRecorder.onstop = () => finishBurn(chunks, burnSmoothBtn, 'Burn Smooth');
+
+      // Draw each frame as it arrives via rAF during playback
+      let smoothLoopId = null;
+      const smoothLoop = () => {
+        if (!resultVideo.paused && !resultVideo.ended) {
+          rCtx.drawImage(resultVideo, 0, 0, resultCanvas.width, resultCanvas.height);
+          drawClockOnCanvas();
+          smoothLoopId = requestAnimationFrame(smoothLoop);
+        } else {
+          cancelAnimationFrame(smoothLoopId);
+          burnRecorder.stop();
+        }
+      };
+
+      burnRecorder.start();
+      resultVideo.playbackRate = 1;
+      resultVideo.play().then(() => {
+        smoothLoopId = requestAnimationFrame(smoothLoop);
+      });
+    });
+  };
+
   discardBtn.onclick = () => {
     if(confirm('Exit review mode? Unsaved selections will be lost.')) {
       resultOverlay.classList.remove('show');
@@ -1237,11 +1274,15 @@
       resultVideo.src = '';
       finishersList=[]; videoTimelineMap=[];
       isImportedVideoMode = false; isVideoSynced = false;
-      saveClock(); // persist cleared finishers list
-      // Restart live camera if it was killed by an external video upload
+      saveClock();
       if (!cameraStream) {
+        // Camera was killed by external video upload — restart it
         drawLoopActive = true;
         startCamera();
+      } else {
+        // Camera still running but draw loop was paused — resume it
+        drawLoopActive = true;
+        requestAnimationFrame(drawLoop);
       }
     }
   };
