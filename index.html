@@ -1130,11 +1130,13 @@
   window.onkeydown = (e) => { if (resultOverlay.classList.contains('show') && e.code === 'Space') { e.preventDefault(); markCurrentFinisher(); } };
 
   exportCsvBtn.onclick = () => {
-    let desiredName = prompt("Enter a name for your CSV file:", `results-${Date.now()}`);
-    if (desiredName === null) return;
-    desiredName = desiredName.trim() || `results-${Date.now()}`;
-    const cleanFilename = desiredName.replace(/[^a-z0-9_\-\(\)]/gi, '_');
     const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const defaultName = `results-${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
+    let desiredName = prompt("Enter a name for your CSV file:", defaultName);
+    if (desiredName === null) return;
+    desiredName = desiredName.trim() || defaultName;
+    const cleanFilename = desiredName.replace(/[^a-z0-9_\-\(\)]/gi, '_');
     const exportedAt = now.toLocaleDateString() + ' ' + now.toLocaleTimeString();
     let csv = `Exported,${exportedAt}\n`;
     if (uploadedVideoName) csv += `Video,${uploadedVideoName}\n`;
