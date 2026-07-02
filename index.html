@@ -347,22 +347,6 @@
   }
   #scrubIndicator.show{opacity:1;}
 
-  /* Portrait warning */
-  #portraitWarning{
-    display:none;
-    position:fixed;inset:0;
-    background:rgba(0,0,0,.92);
-    color:var(--paper);
-    flex-direction:column;align-items:center;justify-content:center;
-    text-align:center;padding:32px;
-    z-index:100;
-    font-family:var(--mono);
-  }
-  #portraitWarning svg{margin-bottom:20px;opacity:.8;}
-  #portraitWarning p{font-size:16px;line-height:1.6;color:#c9c4b8;max-width:28ch;}
-  @media (orientation:portrait){
-    #portraitWarning{display:flex;}
-  }
   #installBtn{
     position:fixed;top:calc(10px + env(safe-area-inset-top));left:50%;
     transform:translateX(-50%);display:none;
@@ -376,15 +360,6 @@
 </style>
 </head>
 <body>
-
-<div id="portraitWarning">
-  <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <rect x="20" y="8" width="28" height="48" rx="4" stroke="#f4f1ea" stroke-width="3"/>
-    <path d="M8 32 L20 20 M8 32 L20 44" stroke="#c1272d" stroke-width="3" stroke-linecap="round"/>
-    <path d="M56 32 L44 20 M56 32 L44 44" stroke="#c1272d" stroke-width="3" stroke-linecap="round"/>
-  </svg>
-  <p>Rotate your phone to landscape for the best experience</p>
-</div>
 
 <div id="stage">
   <video id="video" playsinline muted autoplay></video>
