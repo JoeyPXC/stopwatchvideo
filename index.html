@@ -1202,10 +1202,13 @@
   }
 
   burnSmoothBtn.onclick = () => {
-    resultVideo.pause();
     burnSmoothBtn.textContent = 'Saving…';
     burnSmoothBtn.disabled = true;
+
+    // Seek and play immediately while we still have the user gesture context
     resultVideo.currentTime = 0;
+    resultVideo.playbackRate = 1;
+    const playPromise = resultVideo.play();
 
     getBurnFps().then(fps => {
       const { burnRecorder, chunks } = startBurnRecorder(fps);
@@ -1213,22 +1216,34 @@
       burnRecorder.onstop = () => finishBurn(chunks);
 
       let smoothLoopId = null;
+      let started = false;
+
       const smoothLoop = () => {
-        if (!resultVideo.paused && !resultVideo.ended) {
-          rCtx.drawImage(resultVideo, 0, 0, resultCanvas.width, resultCanvas.height);
-          drawClockOnCanvas();
-          smoothLoopId = requestAnimationFrame(smoothLoop);
-        } else {
+        if (resultVideo.ended) {
           cancelAnimationFrame(smoothLoopId);
           burnRecorder.stop();
+          return;
         }
+        rCtx.drawImage(resultVideo, 0, 0, resultCanvas.width, resultCanvas.height);
+        drawClockOnCanvas();
+        smoothLoopId = requestAnimationFrame(smoothLoop);
       };
 
-      burnRecorder.start();
-      resultVideo.playbackRate = 1;
-      resultVideo.play().then(() => {
+      // Wait for play to actually start before kicking off the recorder
+      const startWhenPlaying = () => {
+        burnRecorder.start();
         smoothLoopId = requestAnimationFrame(smoothLoop);
-      });
+      };
+
+      if (playPromise) {
+        playPromise.then(startWhenPlaying).catch(err => {
+          console.error('Playback failed:', err);
+          burnSmoothBtn.textContent = 'Save Video';
+          burnSmoothBtn.disabled = false;
+        });
+      } else {
+        startWhenPlaying();
+      }
     });
   };
 
