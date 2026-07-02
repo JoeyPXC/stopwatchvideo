@@ -14,7 +14,7 @@
     --track-red:#c1272d;
     --ink:#161513;
     --paper:#f4f1ea;
-    --mono: 'Consolas','SFMono-Regular',Menlo,monospace;
+    --mono: ui-monospace, 'SF Mono', 'Roboto Mono', Menlo, Monaco, Consolas, monospace;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   html,body{
@@ -293,11 +293,11 @@
 
 <div id="zoomIndicator"></div>
 
-<div id="versionTag">v8</div>
+<div id="versionTag">v9-persistent</div>
 
 <div id="bottomBar">
   <div id="clockRow">
-    <button id="resetClockBtn" class="smallBtn" title="Reset clock">&#8634;</button>
+    <button id="resetClockBtn" class="smallBtn" title="Reset clock" disabled>&#8634;</button>
     <button id="clockBtn" class="pillBtn">Start clock</button>
     <button id="lapBtn" class="pillBtn" title="Mark a lap">Lap</button>
   </div>
@@ -360,30 +360,31 @@
 
   function isIOS() {
     return /iP(hone|od|ad)/.test(navigator.userAgent) ||
-      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPadOS reports as Mac
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   }
   if (isIOS()) downloadBtn.textContent = 'Save (via Share Sheet)';
 
   let facingMode = 'environment';
   let cameraStream = null;
   let zoomTrack = null;
-  let zoomCaps = null;      // {min, max, step} if the device supports real hardware zoom
-  let digitalZoomFactor = 1; // used as a fallback when hardware zoom isn't available
+  let zoomCaps = null;      
+  let digitalZoomFactor = 1; 
   let audioCtx = null;
   let limitedAudioTrack = null;
 
+  // Persistent background stopwatch state variables using wall-clock time tracking
   let clockRunning = false;
   let clockElapsedMs = 0;
-  let clockStartPerf = 0;
-  let lastLapMarkMs = 0; // total-clock time (ms) at which the current lap started
-  let lapUsed = false;   // true only once the Lap button has actually been pressed
+  let clockStartPerf = 0; // Tracks Unix epoch time via Date.now() when running
+  let lastLapMarkMs = 0; 
+  let lapUsed = false;   
 
   let recorder = null;
-  let recordingState = 'idle'; // idle | recording | paused
+  let recordingState = 'idle'; 
   let recordedChunks = [];
   let lastBlobUrl = null;
-  let recordingActiveMs = 0;      // accumulated duration across all non-paused segments
-  let activeSegmentStart = 0;     // performance.now() when the current active segment began
+  let recordingActiveMs = 0;      
+  let activeSegmentStart = 0;     
   let lastRecordingDurationMs = 0;
 
   function currentActiveDurationMs() {
@@ -393,10 +394,6 @@
   // ---------- Camera setup ----------
 
   function buildLimitedAudioTrack(rawTrack) {
-    // Auto-gain/noise-suppression are off so ambient sound isn't suppressed,
-    // which means loud peaks (PA system, gun, crowd) can clip and crackle.
-    // This runs the raw mic through a fast limiter that only catches peaks
-    // right before they'd clip, leaving normal volume levels untouched.
     if (audioCtx) { try { audioCtx.close(); } catch (e) {} audioCtx = null; }
     if (!rawTrack) return null;
     try {
@@ -415,7 +412,7 @@
       audioCtx.resume().catch(() => {});
       return dest.stream.getAudioTracks()[0] || rawTrack;
     } catch (e) {
-      return rawTrack; // if Web Audio processing fails for any reason, fall back to raw audio
+      return rawTrack; 
     }
   }
 
@@ -450,7 +447,7 @@
       zoomCaps = null;
       try {
         const caps = zoomTrack && zoomTrack.getCapabilities ? zoomTrack.getCapabilities() : null;
-        if (caps && caps.zoom) zoomCaps = caps.zoom; // {min, max, step}
+        if (caps && caps.zoom) zoomCaps = caps.zoom; 
       } catch (e) {}
 
       video.srcObject = stream;
@@ -471,7 +468,7 @@
   }
 
   async function flipCamera() {
-    if (recordingState !== 'idle') return; // keep it simple: no flipping mid-recording
+    if (recordingState !== 'idle') return; 
     facingMode = facingMode === 'environment' ? 'user' : 'environment';
     if (cameraStream) cameraStream.getTracks().forEach(t => t.stop());
     await startCamera();
@@ -480,15 +477,12 @@
   flipBtn.addEventListener('click', flipCamera);
   permBtn.addEventListener('click', startCamera);
 
-  // Re-request the camera stream when the phone rotates, so landscape and
-  // portrait each capture (and fill) their own native screen aspect ratio.
-  // Never interrupts an active recording — just waits until it's finished.
   let orientationDebounce = null;
   function handleOrientationChange() {
     if (!cameraStream) return;
     clearTimeout(orientationDebounce);
     orientationDebounce = setTimeout(() => {
-      if (recordingState !== 'idle') return; // don't disrupt an active/paused recording
+      if (recordingState !== 'idle') return; 
       cameraStream.getTracks().forEach(t => t.stop());
       startCamera();
     }, 350);
@@ -499,7 +493,7 @@
   // ---------- Clock ----------
 
   function currentClockMs() {
-    return clockElapsedMs + (clockRunning ? performance.now() - clockStartPerf : 0);
+    return clockElapsedMs + (clockRunning ? Date.now() - clockStartPerf : 0);
   }
 
   function currentLapMs() {
@@ -516,20 +510,48 @@
 
   function startClockNow() {
     if (clockRunning) return;
-    clockStartPerf = performance.now();
+    clockStartPerf = Date.now();
     clockRunning = true;
     clockBtn.textContent = 'Stop clock';
     clockBtn.classList.add('active');
     resetClockBtn.disabled = true;
+
+    // Save running state to device disk
+    localStorage.setItem('stopwatch_running', 'true');
+    localStorage.setItem('stopwatch_start_time', clockStartPerf - clockElapsedMs);
   }
 
   function stopClockNow() {
     if (!clockRunning) return;
-    clockElapsedMs += performance.now() - clockStartPerf;
+    clockElapsedMs += Date.now() - clockStartPerf;
     clockRunning = false;
     clockBtn.textContent = 'Start clock';
     clockBtn.classList.remove('active');
     resetClockBtn.disabled = false;
+
+    // Update saved state on device disk
+    localStorage.setItem('stopwatch_running', 'false');
+    localStorage.setItem('stopwatch_elapsed', clockElapsedMs);
+  }
+
+  function loadClockFromStorage() {
+    const isRunning = localStorage.getItem('stopwatch_running') === 'true';
+    if (isRunning) {
+      const savedStartTime = Number(localStorage.getItem('stopwatch_start_time'));
+      if (savedStartTime) {
+        clockStartPerf = Date.now();
+        clockElapsedMs = Date.now() - savedStartTime;
+        clockRunning = true;
+        clockBtn.textContent = 'Stop clock';
+        clockBtn.classList.add('active');
+        resetClockBtn.disabled = true;
+      }
+    } else {
+      clockElapsedMs = Number(localStorage.getItem('stopwatch_elapsed')) || 0;
+      if (clockElapsedMs > 0) {
+        resetClockBtn.disabled = false;
+      }
+    }
   }
 
   clockBtn.addEventListener('click', () => {
@@ -541,14 +563,16 @@
     clockElapsedMs = 0;
     lastLapMarkMs = 0;
     lapUsed = false;
+    resetClockBtn.disabled = true;
+    localStorage.removeItem('stopwatch_running');
+    localStorage.removeItem('stopwatch_start_time');
+    localStorage.removeItem('stopwatch_elapsed');
   });
 
   lapBtn.addEventListener('click', () => {
     lastLapMarkMs = currentClockMs();
     lapUsed = true;
   });
-
-  // ---------- Draw loop (burns the clock into the canvas every frame) ----------
 
   // ---------- Pinch-to-zoom ----------
 
@@ -601,7 +625,7 @@
 
   stage.addEventListener('touchmove', e => {
     if (pinchActive && e.touches.length === 2) {
-      e.preventDefault(); // stop the browser's own page-zoom gesture from fighting with this
+      e.preventDefault(); 
       const dist = touchDistance(e.touches);
       if (pinchStartDist > 0) {
         const ratio = dist / pinchStartDist;
@@ -617,20 +641,12 @@
   stage.addEventListener('touchcancel', () => { pinchActive = false; }, { passive: true });
 
   function drawLoop() {
-    // Only allow the recording frame size to track the camera when idle.
-    // Once recording starts, the frame size is locked for the whole
-    // recording — a physical device rotation mid-recording should never
-    // change (or visually rotate) the video that's already in progress.
     if (recordingState === 'idle' && video.videoWidth &&
         (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight)) {
       sizeCanvasToVideo();
     }
     if (video.readyState >= 2) {
       if (!zoomCaps && digitalZoomFactor > 1 && video.videoWidth) {
-        // Digital zoom fallback: draw a centered crop of the source frame,
-        // scaled up to fill the recording frame. Hardware zoom (when
-        // available) already returns a zoomed frame directly, so this only
-        // applies when there's no real optical/hybrid zoom on the device.
         const sw = video.videoWidth / digitalZoomFactor;
         const sh = video.videoHeight / digitalZoomFactor;
         const sx = (video.videoWidth - sw) / 2;
@@ -645,7 +661,7 @@
   }
 
   function drawTimeText(text, x, baselineY, fontSize, color) {
-    ctx.font = `700 ${fontSize}px Consolas, Menlo, monospace`;
+    ctx.font = `700 ${fontSize}px ui-monospace, 'SF Mono', 'Roboto Mono', Menlo, Monaco, Consolas, monospace`;
     ctx.textBaseline = 'alphabetic';
     ctx.lineJoin = 'round';
     ctx.lineWidth = Math.max(2, fontSize * 0.14);
@@ -665,21 +681,9 @@
     const totalColor = clockRunning ? '#f4f1ea' : '#c9a227';
     drawTimeText(formatClock(currentClockMs()), x, totalBaselineY, totalFontSize, totalColor);
 
-    // Only show the lap time once the Lap button has actually been pressed —
-    // otherwise stay a single clean total-time display, no clutter.
     if (lapUsed) {
       drawTimeText(formatClock(currentLapMs()), x, lapBaselineY, lapFontSize, '#f4f1ea');
     }
-  }
-
-  function roundRect(c, x, y, w, h, r) {
-    c.beginPath();
-    c.moveTo(x + r, y);
-    c.arcTo(x + w, y, x + w, y + h, r);
-    c.arcTo(x + w, y + h, x, y + h, r);
-    c.arcTo(x, y + h, x, y, r);
-    c.arcTo(x, y, x + w, y, r);
-    c.closePath();
   }
 
   // ---------- Recording ----------
@@ -698,27 +702,15 @@
 
   async function lockOrientationForRecording() {
     const type = window.innerWidth >= window.innerHeight ? 'landscape' : 'portrait';
-
-    // The orientation lock API requires the document to actually be in
-    // Fullscreen-API fullscreen — "standalone" PWA display doesn't count,
-    // even though it looks fullscreen. This is the real precondition.
     if (!document.fullscreenElement) {
       try {
         await document.documentElement.requestFullscreen();
-      } catch (e) {
-        // Continue anyway — the lock attempt below will report its own
-        // specific error if fullscreen was actually required and missing.
-      }
+      } catch (e) {}
     }
-
     if (!screen.orientation || !screen.orientation.lock) return;
     try {
       await screen.orientation.lock(type);
-    } catch (e) {
-      // Not supported/permitted on this device — the frame-lock in drawLoop()
-      // still prevents the video itself from changing shape, just without
-      // physically stopping the phone's screen from rotating underneath it.
-    }
+    } catch (e) {}
   }
 
   function unlockOrientation() {
@@ -747,10 +739,6 @@
     recordingState = 'starting';
     updateRecUI();
 
-    // Give the freshly-combined video+audio stream a brief moment to settle
-    // before the encoder actually starts consuming it. Starting a
-    // MediaRecorder the instant a stream is created is a known source of a
-    // short audio crackle right at the very beginning of a recording.
     setTimeout(() => {
       if (recordingState !== 'starting' || !recorder) return;
       recorder.start(1000);
@@ -788,8 +776,6 @@
   }
 
   function updateRecUI() {
-    // 'starting' looks identical to 'recording' (so the button gives instant
-    // visual feedback) but taps are ignored until the encoder has actually begun.
     const visualState = recordingState === 'starting' ? 'recording' : recordingState;
 
     recMainBtn.classList.remove('state-idle', 'state-recording', 'state-paused');
@@ -798,9 +784,9 @@
     if (recordingState === 'idle') {
       recIcon.innerHTML = '';
     } else if (visualState === 'recording') {
-      recIcon.innerHTML = '&#10074;&#10074;'; // pause icon: tap to pause
+      recIcon.innerHTML = '&#10074;&#10074;'; 
     } else {
-      recIcon.innerHTML = '&#9654;'; // play icon: tap to resume
+      recIcon.innerHTML = '&#9654;'; 
     }
 
     finishBtn.disabled = (recordingState === 'idle' || recordingState === 'starting');
@@ -832,8 +818,6 @@
         useBlob(buggyBlob);
       }
     } else {
-      // Library didn't load (e.g. offline) or duration wasn't tracked — still
-      // usable, just without a working seek bar in some players.
       useBlob(buggyBlob);
     }
   }
@@ -847,11 +831,6 @@
 
   // ---------- Result screen actions ----------
 
-  // Steps the played-back result video roughly one frame at a time, so you
-  // can land precisely on the moment someone crosses and read the burned-in
-  // clock directly off that frame. This is an approximation (1/30s steps,
-  // matching our capture rate) rather than a guaranteed exact frame index —
-  // browsers don't expose true frame-stepping, only currentTime seeking.
   let FRAME_STEP_SEC=1/60;
   function stepResultFrame(direction) {
     if (!isFinite(resultVideo.duration)) return;
@@ -862,15 +841,12 @@
   prevFrameBtn.addEventListener('click', () => stepResultFrame(-1));
   nextFrameBtn.addEventListener('click',()=>stepResultFrame(1));back5Btn.addEventListener('click',()=>stepResultFrame(-5));fwd5Btn.addEventListener('click',()=>stepResultFrame(5));document.querySelectorAll('.speed').forEach(b=>b.onclick=()=>{resultVideo.playbackRate=parseFloat(b.dataset.speed);});
 
-  // Drag left/right anywhere on the video to scrub, and a plain tap
-  // toggles play/pause — replacing the native controls bar, which sat
-  // right over the burned-in clock.
-  const DRAG_SECONDS_PER_PIXEL = 0.012; // ~12ms of video per pixel dragged
-  const TAP_MOVE_THRESHOLD = 6; // px — under this, treat it as a tap, not a drag
+  const DRAG_SECONDS_PER_PIXEL = 0.012; 
+  const TAP_MOVE_THRESHOLD = 6; 
   let scrubStartX = 0;
   let scrubStartTime = 0;
   let scrubMoved = false;
-  let lastTouchActivity = 0; // guards against the "ghost" mouse events touchscreens fire after a real touch
+  let lastTouchActivity = 0; 
 
   function scrubDragStart(clientX) {
     scrubStartX = clientX;
@@ -906,12 +882,6 @@
     scrubDragEnd();
   });
 
-  // Mouse handlers exist for desktop testing only — on a touchscreen, the
-  // browser also fires a synthesized "ghost" mousedown/mouseup shortly after
-  // every real touch for backward compatibility. Without this guard, a
-  // single tap would toggle play/pause twice (once from touch, once from
-  // the ghost mouse event right after), which is exactly why it took a
-  // couple of taps to actually get the video playing.
   let mouseScrubbing = false;
   resultVideoWrap.addEventListener('mousedown', e => {
     if (Date.now() - lastTouchActivity < 800) return;
@@ -942,7 +912,7 @@
         await navigator.share({ files: [file], title: 'Race video' });
         return true;
       } catch (e) {
-        return false; // user cancelled — not an error
+        return false; 
       }
     }
     return false;
@@ -954,17 +924,15 @@
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       await shareFile();
     } else {
-      downloadBlob(); // no share support at all on this browser — fall back to a direct download
+      downloadBlob(); 
     }
   });
 
   downloadBtn.addEventListener('click', async () => {
     if (isIOS()) {
-      // iOS Safari doesn't reliably support direct blob downloads for video —
-      // the share sheet (choose "Save Video") is the actual way to save on iPhone/iPad.
       const shared = await shareFile();
       if (!shared) {
-        alert('Tap Share instead, then choose "Save Video" to save it to Photos.');
+        alert('Tap Share instead, then choose \"Save Video\" to save it to Photos.');
       }
       return;
     }
@@ -983,10 +951,12 @@
   }
 
   discardBtn.addEventListener('click', () => {
-    resultOverlay.classList.remove('show');
-    resultVideo.pause();
-    resultVideo.removeAttribute('src');
-    recordedChunks = [];
+    if (confirm('Are you sure you want to discard this video? It will be permanently removed.')) {
+      resultOverlay.classList.remove('show');
+      resultVideo.pause();
+      resultVideo.removeAttribute('src');
+      recordedChunks = [];
+    }
   });
 
   // ---------- PWA install prompt ----------
@@ -1011,6 +981,8 @@
     });
   }
 
+  // Restore saved stopwatch state on app lifecycle boots
+  loadClockFromStorage();
   updateRecUI();
 })();
 </script>
