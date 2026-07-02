@@ -170,11 +170,37 @@
     overflow-y:auto;
   }
   #resultOverlay.show{display:flex;}
+
+  /* In landscape, split into side-by-side: video left, controls right */
+  @media (orientation:landscape) {
+    #resultOverlay.show {
+      flex-direction:row;
+      overflow:hidden;
+    }
+    #resultLeft {
+      display:flex;
+      flex-direction:column;
+      flex:1;
+      min-width:0;
+      overflow:hidden;
+    }
+    #resultRight {
+      width:260px;
+      flex-shrink:0;
+      display:flex;
+      flex-direction:column;
+      overflow-y:auto;
+      border-left:1px solid #2c2a27;
+    }
+  }
+  @media (orientation:portrait) {
+    #resultLeft { display:contents; }
+    #resultRight { display:contents; }
+  }
   
   #resultDisplayContainer {
     position:relative;
     width:100%;
-    /* Let the container grow to fit the canvas naturally — no fixed height that clips */
     max-height:55vh;
     background:#000;
     overflow:hidden;
@@ -183,15 +209,24 @@
     align-items:center;
     justify-content:center;
   }
+  @media (orientation:landscape) {
+    #resultDisplayContainer {
+      max-height:none;
+      flex:1;
+    }
+  }
   #resultCanvas {
     display:block;
-    /* Scale to fit the container without ever overflowing */
     max-width:100%;
     max-height:55vh;
     width:auto;
     height:auto;
-    /* Ensure the canvas is never taller than what the container can show */
     object-fit:contain;
+  }
+  @media (orientation:landscape) {
+    #resultCanvas {
+      max-height:100%;
+    }
   }
 
   #frameStepBar{
@@ -391,45 +426,49 @@
 </div>
 
 <div id="resultOverlay">
-  <div id="resultDisplayContainer">
-    <video id="resultVideo" playsinline muted preload="auto" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;visibility:hidden;"></video>
-    <canvas id="resultCanvas"></canvas>
-    <div id="scrubIndicator"></div>
-  </div>
-  <div id="frameStepBar">
-    <button id="inlinePlayPauseBtn" class="frameBtn">PLAY</button>
-    <span style="color:rgba(244,241,234,.3);padding:0 2px;">|</span>
-    <button id="back5Btn" class="frameBtn">&#171;5</button><button id="prevFrameBtn" class="frameBtn">&#9664;1</button><button id="nextFrameBtn" class="frameBtn">1&#9654;</button><button id="fwd5Btn" class="frameBtn">5&#187;</button>
-    <span style="color:rgba(244,241,234,.3);padding:0 2px;">|</span>
-    <button id="speed1x" class="frameBtn speed activeSpeed" data-speed="1">1x</button><button id="speedSlow" class="frameBtn speed" data-speed="0.1">0.1x</button>
-  </div>
-
-  <div id="resultsDataContainer">
-    <div id="markingRow">
-      <button id="flashZeroBtn" class="syncActionBtn" title="Set this specific frame as race zero">Set Gun Flash (0.00)</button>
-      <button id="syncVideoBtn" class="syncActionBtn">Manual Sync</button>
-      <button id="takeSplitBtn">Take Split</button>
+  <div id="resultLeft">
+    <div id="resultDisplayContainer">
+      <video id="resultVideo" playsinline muted preload="auto" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;visibility:hidden;"></video>
+      <canvas id="resultCanvas"></canvas>
+      <div id="scrubIndicator"></div>
     </div>
-    <div id="tableWrapper">
-      <table id="resultsTable">
-        <thead>
-          <tr>
-            <th style="width: 50px;">Place</th>
-            <th style="width: 80px;">Time</th>
-            <th>Notes</th>
-            <th style="width: 40px; text-align: center;"></th>
-          </tr>
-        </thead>
-        <tbody id="resultsBody"></tbody>
-      </table>
+    <div id="frameStepBar">
+      <button id="inlinePlayPauseBtn" class="frameBtn">PLAY</button>
+      <span style="color:rgba(244,241,234,.3);padding:0 2px;">|</span>
+      <button id="back5Btn" class="frameBtn">&#171;5</button><button id="prevFrameBtn" class="frameBtn">&#9664;1</button><button id="nextFrameBtn" class="frameBtn">1&#9654;</button><button id="fwd5Btn" class="frameBtn">5&#187;</button>
+      <span style="color:rgba(244,241,234,.3);padding:0 2px;">|</span>
+      <button id="speed1x" class="frameBtn speed activeSpeed" data-speed="1">1x</button><button id="speedSlow" class="frameBtn speed" data-speed="0.1">0.1x</button>
     </div>
   </div>
 
-  <div id="resultBar">
-    <button id="exportCsvBtn">Export CSV</button>
-    <button id="burnSmoothBtn">Save Video</button>
-    <button id="downloadBtn" style="display:none;">Download WebM</button>
-    <button id="discardBtn">Discard</button>
+  <div id="resultRight">
+    <div id="resultsDataContainer">
+      <div id="markingRow">
+        <button id="flashZeroBtn" class="syncActionBtn" title="Set this specific frame as race zero">Set Gun Flash (0.00)</button>
+        <button id="syncVideoBtn" class="syncActionBtn">Manual Sync</button>
+        <button id="takeSplitBtn">Take Split</button>
+      </div>
+      <div id="tableWrapper">
+        <table id="resultsTable">
+          <thead>
+            <tr>
+              <th style="width: 50px;">Place</th>
+              <th style="width: 80px;">Time</th>
+              <th>Notes</th>
+              <th style="width: 40px; text-align: center;"></th>
+            </tr>
+          </thead>
+          <tbody id="resultsBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="resultBar">
+      <button id="exportCsvBtn">Export CSV</button>
+      <button id="burnSmoothBtn">Share Video</button>
+      <button id="downloadBtn" style="display:none;">Download WebM</button>
+      <button id="discardBtn">Discard</button>
+    </div>
   </div>
 </div>
 
@@ -1013,10 +1052,18 @@
         e.touches[0].clientX - e.touches[1].clientX,
         e.touches[0].clientY - e.touches[1].clientY
       );
-      reviewZoom = Math.min(8, Math.max(1, pinchStartZoom * (dist / pinchStartDist2)));
-      applyReviewTransform();
+      const newZoom = Math.min(8, Math.max(1, pinchStartZoom * (dist / pinchStartDist2)));
 
-      // Show zoom level
+      // Zoom toward the pinch midpoint
+      const rect = resultCanvas.getBoundingClientRect();
+      const midX = ((e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left) / rect.width - 0.5;
+      const midY = ((e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top) / rect.height - 0.5;
+      const zoomRatio = newZoom / reviewZoom;
+      reviewPanX = midX * rect.width * (1 - zoomRatio) / newZoom + reviewPanX * zoomRatio;
+      reviewPanY = midY * rect.height * (1 - zoomRatio) / newZoom + reviewPanY * zoomRatio;
+
+      reviewZoom = newZoom;
+      applyReviewTransform();
       showScrubIndicator(reviewZoom.toFixed(1) + 'x');
       return;
     }
@@ -1193,12 +1240,28 @@
 
   function finishBurn(chunks) {
     const finalBlob = new Blob(chunks, { type: 'video/webm' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(finalBlob);
-    a.download = `race-${Date.now()}.webm`;
-    a.click();
-    burnSmoothBtn.textContent = 'Save Video';
+    const filename = `race-${Date.now()}.webm`;
+
+    // Try Web Share API first (Android/iOS native share sheet)
+    if (navigator.canShare && navigator.canShare({ files: [new File([finalBlob], filename, { type: 'video/webm' })] })) {
+      const file = new File([finalBlob], filename, { type: 'video/webm' });
+      navigator.share({ files: [file], title: 'Race Video' }).catch(() => {
+        // User cancelled or share failed — fall back to download
+        triggerDownload(finalBlob, filename);
+      });
+    } else {
+      triggerDownload(finalBlob, filename);
+    }
+
+    burnSmoothBtn.textContent = 'Share Video';
     burnSmoothBtn.disabled = false;
+  }
+
+  function triggerDownload(blob, filename) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
   }
 
   burnSmoothBtn.onclick = () => {
