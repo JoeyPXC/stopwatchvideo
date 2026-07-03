@@ -1,5 +1,6 @@
 
 
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -636,17 +637,21 @@
     if (document.visibilityState === 'visible' && cameraStream) requestWakeLock();
   });
 
-  // Pick the best recording container this browser supports. iOS Safari
-  // records H.264 MP4 and cannot record WebM at all — hardcoding
-  // 'video/webm' there makes the MediaRecorder constructor throw, which
-  // silently broke the Save/Share button on iPhones. Desktop Chrome and
-  // Android prefer VP9 WebM (listed first, so their behavior is unchanged).
+  // Pick the best recording container this browser supports. MP4 (H.264 +
+  // AAC) is preferred whenever available: it plays everywhere the videos
+  // get shared — iMessage, iPhone camera rolls, social apps — while WebM
+  // won't open for iPhone recipients at all. Recording to MP4 is just as
+  // fast as WebM (both use the phone's hardware encoder in real time; no
+  // conversion step). The explicit avc1+mp4a codec string is checked first
+  // because it guarantees iPhone-compatible audio; plain 'video/mp4' could
+  // silently pick an audio codec iMessage can't play. WebM remains the
+  // fallback for browsers that can't record MP4 (mostly older Chrome).
   // Detect once; use everywhere: recorder config, blob type, file extension.
   function pickRecorderFormat() {
     const candidates = [
+      { mime: 'video/mp4;codecs=avc1.42E01E,mp4a.40.2', blobType: 'video/mp4', ext: 'mp4' },
       { mime: 'video/webm;codecs=vp9', blobType: 'video/webm', ext: 'webm' },
       { mime: 'video/webm',            blobType: 'video/webm', ext: 'webm' },
-      { mime: 'video/mp4;codecs=avc1.42E01E,mp4a.40.2', blobType: 'video/mp4', ext: 'mp4' },
       { mime: 'video/mp4',             blobType: 'video/mp4', ext: 'mp4' },
     ];
     if (window.MediaRecorder && MediaRecorder.isTypeSupported) {
