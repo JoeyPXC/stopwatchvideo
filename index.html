@@ -815,8 +815,24 @@
     }
   }, { passive: false });
 
-  function drawLoop() {
+  // Battery: requestAnimationFrame fires at the DISPLAY's refresh rate —
+  // 120/sec on ProMotion iPhones and many newer Androids. That meant
+  // compositing full-resolution video frames at up to 120fps even while
+  // idly waiting for a race to start. The recording only ever samples the
+  // canvas at 60fps, so anything above that is pure wasted power. Cap:
+  // ~30fps while idle (plenty smooth for a preview + running clock),
+  // ~60fps while actually recording. The thresholds (30ms/15ms) divide
+  // evenly into both 60Hz and 120Hz frame intervals, so pacing stays
+  // clean on either kind of display.
+  let lastDrawTs = 0;
+  function drawLoop(ts) {
     if (!drawLoopActive) return;
+    const minInterval = recordingState === 'recording' ? 15 : 30;
+    if (ts !== undefined && ts - lastDrawTs < minInterval) {
+      requestAnimationFrame(drawLoop);
+      return;
+    }
+    lastDrawTs = ts || 0;
     if (video.readyState >= 2) {
       if (!zoomCaps && digitalZoomFactor > 1) {
         const sw = video.videoWidth / digitalZoomFactor, sh = video.videoHeight / digitalZoomFactor;
