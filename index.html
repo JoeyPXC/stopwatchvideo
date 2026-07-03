@@ -1,11 +1,12 @@
 
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="theme-color" content="#161513">
-<title>Stopwatch Video Pro</title>
+<title>Stopwatch Video</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -416,7 +417,7 @@
 <button id="installBtn">Install app</button>
 
 <div id="permOverlay">
-  <h1>Stopwatch Video Pro</h1>
+  <h1>Stopwatch Video</h1>
   <p>Needs access to your camera and microphone to track run splits and identify starting audio cues automatically.</p>
   <button id="permBtn">Enable camera</button>
   <p id="permError" style="color:#e78a8e;margin-top:16px;"></p>
@@ -670,10 +671,22 @@
         try { const caps = zoomTrack.getCapabilities(); if(caps.zoom) zoomCaps = caps.zoom; } catch(e){}
       }
       video.srcObject = stream;
+      await new Promise(resolve => {
+        if (video.readyState >= 1) { resolve(); return; }
+        video.addEventListener('loadedmetadata', resolve, { once: true });
+      });
       await video.play();
       permOverlay.classList.add('hidden');
-      canvas.width = video.videoWidth || 1280;
-      canvas.height = video.videoHeight || 720;
+      // Wait until the browser reports real dimensions (not 0×0)
+      await new Promise(resolve => {
+        const check = () => {
+          if (video.videoWidth > 0 && video.videoHeight > 0) { resolve(); return; }
+          requestAnimationFrame(check);
+        };
+        check();
+      });
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
       requestWakeLock();
       // Request landscape lock where supported (Chrome Android)
       if (screen.orientation && screen.orientation.lock) {
