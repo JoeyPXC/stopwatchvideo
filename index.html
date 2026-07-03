@@ -921,16 +921,20 @@
     if (resultVideo.readyState >= 1) {
       rCtx.drawImage(resultVideo, 0, 0, resultCanvas.width, resultCanvas.height);
       
-      const fSize = Math.round(resultCanvas.width * 0.045);
-      rCtx.font = `700 ${fSize}px ui-monospace, monospace`;
-      rCtx.lineJoin = 'round'; rCtx.lineWidth = fSize * 0.15; rCtx.strokeStyle = 'rgba(0,0,0,0.8)';
-      
-      const calculatedMs = Math.max(0, getCalculatedRaceTimeMs());
-      const txt = formatClock(calculatedMs);
-      
-      rCtx.strokeText(txt, fSize * 0.5, resultCanvas.height - fSize * 0.5);
-      rCtx.fillStyle = '#f4f1ea';
-      rCtx.fillText(txt, fSize * 0.5, resultCanvas.height - fSize * 0.5);
+      // Only draw the clock overlay when reviewing an external unsynced video.
+      // If reviewing your own recorded footage the clock is already burned in.
+      if (isVideoSynced) {
+        const fSize = Math.round(resultCanvas.width * 0.045);
+        rCtx.font = `700 ${fSize}px ui-monospace, monospace`;
+        rCtx.lineJoin = 'round'; rCtx.lineWidth = fSize * 0.15; rCtx.strokeStyle = 'rgba(0,0,0,0.8)';
+        
+        const calculatedMs = Math.max(0, getCalculatedRaceTimeMs());
+        const txt = formatClock(calculatedMs);
+        
+        rCtx.strokeText(txt, fSize * 0.5, resultCanvas.height - fSize * 0.5);
+        rCtx.fillStyle = '#f4f1ea';
+        rCtx.fillText(txt, fSize * 0.5, resultCanvas.height - fSize * 0.5);
+      }
     }
   }
 
