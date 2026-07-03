@@ -455,7 +455,7 @@
 <div id="resultOverlay">
   <div id="resultLeft">
     <div id="resultDisplayContainer">
-      <video id="resultVideo" playsinline muted preload="auto" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;visibility:hidden;"></video>
+      <video id="resultVideo" playsinline preload="auto" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;visibility:hidden;"></video>
       <canvas id="resultCanvas"></canvas>
       <div id="scrubIndicator"></div>
     </div>
@@ -1031,13 +1031,16 @@
   let FRAME_STEP_SEC=1/60;
   function step(d) { 
     resultVideo.pause();
+    resultVideo.muted = true;
     resultVideo.currentTime = Math.max(0, Math.min(resultVideo.duration, resultVideo.currentTime + d * FRAME_STEP_SEC)); 
   }
   prevFrameBtn.onclick=()=>step(-1); nextFrameBtn.onclick=()=>step(1); back5Btn.onclick=()=>step(-5); fwd5Btn.onclick=()=>step(5);
   
   document.querySelectorAll('.speed').forEach(b=>{
     b.onclick=()=>{
-      resultVideo.playbackRate=parseFloat(b.dataset.speed);
+      const rate = parseFloat(b.dataset.speed);
+      resultVideo.playbackRate = rate;
+      resultVideo.muted = rate !== 1;
       document.querySelectorAll('.speed').forEach(s=>s.classList.remove('activeSpeed')); b.classList.add('activeSpeed');
     };
   });
