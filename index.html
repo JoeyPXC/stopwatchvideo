@@ -600,6 +600,12 @@
         if (clockElapsedMs > 0) resetClockBtn.disabled = false;
       }
       if (finishersList.length > 0) renderResultsTable();
+      // Re-save immediately so the 1-hour expiry window restarts from THIS
+      // open, not from the last button press. Without this, a clock started
+      // at a meet would silently expire an hour after the start gun even if
+      // the app had been reopened several times since — reopening the app
+      // is activity too.
+      saveClock();
     } catch(e) {}
   }
   
