@@ -4,6 +4,8 @@ A camera PWA with a burned-in stopwatch overlay for filming races at meets. Reco
 
 **[▶ Open the app](https://joeypxc.github.io/stopwatchvideo/)**
 
+Back in 2012, at an away dual meet with no official timing, I held my stopwatch up in front of my phone's camera while filming the 1600m finish so I'd have my athletes' times on video afterward — there was no way to split them all individually. I've wanted a proper solution to that problem ever since. Over a decade later, nothing on Android came close to what I actually needed at a meet, so I built it.
+
 ---
 
 ## Features
