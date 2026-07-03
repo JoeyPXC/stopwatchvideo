@@ -552,8 +552,7 @@
   let zoomTrack = null;
   let zoomCaps = null;      
   let digitalZoomFactor = 1; 
-  let audioCtx = null;
-  let limitedAudioTrack = null;
+  let audioTrack = null;
   let wakeLock = null;
 
   let clockRunning = false;
@@ -628,26 +627,6 @@
     try { wakeLock = await navigator.wakeLock.request('screen'); } catch (err) {}
   }
 
-  function buildLimitedAudioTrack(rawTrack) {
-    if (audioCtx) { try { audioCtx.close(); } catch (e) {} audioCtx = null; }
-    if (!rawTrack) return null;
-    try {
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      audioCtx = new Ctx();
-      const source = audioCtx.createMediaStreamSource(new MediaStream([rawTrack]));
-      const limiter = audioCtx.createDynamicsCompressor();
-      limiter.threshold.setValueAtTime(-10, audioCtx.currentTime);
-      limiter.knee.setValueAtTime(4, audioCtx.currentTime);
-      limiter.ratio.setValueAtTime(16, audioCtx.currentTime);
-      limiter.attack.setValueAtTime(0.003, audioCtx.currentTime);
-      limiter.release.setValueAtTime(0.2, audioCtx.currentTime);
-      const dest = audioCtx.createMediaStreamDestination();
-      source.connect(limiter).connect(dest);
-      // Short delay before resuming prevents the compressor startup crackle
-      setTimeout(() => audioCtx.resume().catch(() => {}), 300);
-      return dest.stream.getAudioTracks()[0] || rawTrack;
-    } catch (e) { return rawTrack; }
-  }
 
   async function startCamera() {
     if (!window.isSecureContext) {
@@ -669,7 +648,7 @@
         audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
       });
       cameraStream = stream;
-      limitedAudioTrack = buildLimitedAudioTrack(stream.getAudioTracks()[0] || null);
+      audioTrack = stream.getAudioTracks()[0] || null;
       zoomTrack = stream.getVideoTracks()[0] || null;
       if (zoomTrack && zoomTrack.getCapabilities) {
         try { const caps = zoomTrack.getCapabilities(); if(caps.zoom) zoomCaps = caps.zoom; } catch(e){}
@@ -840,8 +819,7 @@
     // Stop the live camera so it doesn't compete with the uploaded video decode
     drawLoopActive = false;
     if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
-    if (audioCtx) { try { audioCtx.close(); } catch(e){} audioCtx = null; }
-    limitedAudioTrack = null;
+    audioTrack = null;
 
     resultVideo.pause();
     inlinePlayPauseBtn.textContent = 'PLAY';
@@ -980,7 +958,7 @@
   });
 
   function startRecording() {
-    const combined = new MediaStream([...canvas.captureStream(60).getVideoTracks(), ...(limitedAudioTrack?[limitedAudioTrack]:(cameraStream?cameraStream.getAudioTracks():[]))]);
+    const combined = new MediaStream([...canvas.captureStream(60).getVideoTracks(), ...(audioTrack?[audioTrack]:(cameraStream?cameraStream.getAudioTracks():[]))]);
     recorder = new MediaRecorder(combined, { videoBitsPerSecond: 8_000_000 });
     recordedChunks = [];
     recorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
