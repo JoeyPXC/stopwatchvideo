@@ -500,7 +500,7 @@
     <div id="resultBar">
       <button id="exportCsvBtn">Export CSV</button>
       <button id="burnSmoothBtn">Share Video</button>
-      <button id="downloadBtn" style="display:none;">Download WebM</button>
+      <button id="downloadBtn" style="display:none;">Download Video</button>
       <button id="discardBtn">Discard</button>
     </div>
   </div>
@@ -626,6 +626,36 @@
     if (!('wakeLock' in navigator)) return;
     try { wakeLock = await navigator.wakeLock.request('screen'); } catch (err) {}
   }
+
+  // Wake locks are AUTOMATICALLY released by the browser whenever the page
+  // loses visibility — switching apps, a phone call, pulling down the
+  // notification shade. Without re-acquiring on return, the screen could
+  // sleep mid-race, which freezes the draw loop and ruins the recording.
+  // Re-request every time the app becomes visible again.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && cameraStream) requestWakeLock();
+  });
+
+  // Pick the best recording container this browser supports. iOS Safari
+  // records H.264 MP4 and cannot record WebM at all — hardcoding
+  // 'video/webm' there makes the MediaRecorder constructor throw, which
+  // silently broke the Save/Share button on iPhones. Desktop Chrome and
+  // Android prefer VP9 WebM (listed first, so their behavior is unchanged).
+  // Detect once; use everywhere: recorder config, blob type, file extension.
+  function pickRecorderFormat() {
+    const candidates = [
+      { mime: 'video/webm;codecs=vp9', blobType: 'video/webm', ext: 'webm' },
+      { mime: 'video/webm',            blobType: 'video/webm', ext: 'webm' },
+      { mime: 'video/mp4;codecs=avc1.42E01E,mp4a.40.2', blobType: 'video/mp4', ext: 'mp4' },
+      { mime: 'video/mp4',             blobType: 'video/mp4', ext: 'mp4' },
+    ];
+    if (window.MediaRecorder && MediaRecorder.isTypeSupported) {
+      for (const c of candidates) if (MediaRecorder.isTypeSupported(c.mime)) return c;
+    }
+    // Unknown browser: let it pick its own default container.
+    return { mime: '', blobType: 'video/webm', ext: 'webm' };
+  }
+  const REC_FORMAT = pickRecorderFormat();
 
 
   async function startCamera() {
@@ -963,11 +993,13 @@
 
   function startRecording() {
     const combined = new MediaStream([...canvas.captureStream(60).getVideoTracks(), ...(audioTrack?[audioTrack]:(cameraStream?cameraStream.getAudioTracks():[]))]);
-    recorder = new MediaRecorder(combined, { videoBitsPerSecond: 8_000_000 });
+    const recOpts = { videoBitsPerSecond: 8_000_000 };
+    if (REC_FORMAT.mime) recOpts.mimeType = REC_FORMAT.mime;
+    recorder = new MediaRecorder(combined, recOpts);
     recordedChunks = [];
     recorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
     recorder.onstop = () => {
-      const b = new Blob(recordedChunks, { type: 'video/webm' });
+      const b = new Blob(recordedChunks, { type: REC_FORMAT.blobType });
       const process = (blob) => {
         if (lastBlobUrl) URL.revokeObjectURL(lastBlobUrl);
         lastBlobUrl = URL.createObjectURL(blob); 
@@ -989,7 +1021,9 @@
         };
         resultVideo.load();
       };
-      if (window.ysFixWebmDuration && lastRecordingDurationMs > 0) {
+      // The duration fixer only understands WebM container data — skip it
+      // entirely for MP4 recordings (iOS), whose duration is already correct.
+      if (REC_FORMAT.ext === 'webm' && window.ysFixWebmDuration && lastRecordingDurationMs > 0) {
         window.ysFixWebmDuration(b, lastRecordingDurationMs, { logger: false }).then(process).catch(()=>process(b));
       } else { process(b); }
     };
@@ -1291,24 +1325,25 @@
   function startBurnRecorder(fps) {
     const pixels = resultCanvas.width * resultCanvas.height;
     const targetBitrate = Math.min(50_000_000, Math.max(8_000_000, Math.round(pixels * 0.1 * fps)));
-    const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm';
     // Include audio from the uploaded video if available
     const videoTracks = resultCanvas.captureStream(fps).getVideoTracks();
     const audioTracks = resultVideo.captureStream ? resultVideo.captureStream().getAudioTracks() : [];
     const burnStream = new MediaStream([...videoTracks, ...audioTracks]);
-    const burnRecorder = new MediaRecorder(burnStream, { videoBitsPerSecond: targetBitrate, mimeType });
+    const burnOpts = { videoBitsPerSecond: targetBitrate };
+    if (REC_FORMAT.mime) burnOpts.mimeType = REC_FORMAT.mime;
+    const burnRecorder = new MediaRecorder(burnStream, burnOpts);
     const chunks = [];
     burnRecorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
     return { burnRecorder, chunks };
   }
 
   function finishBurn(chunks) {
-    const finalBlob = new Blob(chunks, { type: 'video/webm' });
-    const filename = `race-${Date.now()}.webm`;
+    const finalBlob = new Blob(chunks, { type: REC_FORMAT.blobType });
+    const filename = `race-${Date.now()}.${REC_FORMAT.ext}`;
 
     // Try Web Share API first (Android/iOS native share sheet)
-    if (navigator.canShare && navigator.canShare({ files: [new File([finalBlob], filename, { type: 'video/webm' })] })) {
-      const file = new File([finalBlob], filename, { type: 'video/webm' });
+    if (navigator.canShare && navigator.canShare({ files: [new File([finalBlob], filename, { type: REC_FORMAT.blobType })] })) {
+      const file = new File([finalBlob], filename, { type: REC_FORMAT.blobType });
       navigator.share({ files: [file], title: 'Race Video' }).catch(() => {
         // User cancelled or share failed — fall back to download
         triggerDownload(finalBlob, filename);
@@ -1394,7 +1429,13 @@
       }
     }
   };
-  downloadBtn.onclick = () => { const a=document.createElement('a'); a.href=lastBlobUrl; a.download=`race-${Date.now()}.webm`; a.click(); };
+  downloadBtn.onclick = () => { const a=document.createElement('a'); a.href=lastBlobUrl; a.download=`race-${Date.now()}.${REC_FORMAT.ext}`; a.click(); };
+  // PWA service worker — enables install + full offline use. This app has
+  // no data dependencies (camera only), so once cached it works with zero
+  // signal — which is exactly the situation at most starting lines.
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
 })();
 </script>
 </body>
