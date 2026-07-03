@@ -1,56 +1,58 @@
 # Stopwatch Video
 
-A camera app with a burned-in stopwatch overlay, meant for filming races when
-you don't have FinishLynx running (away meets, filming from the stands, etc).
+A camera PWA with a burned-in stopwatch overlay for filming races at meets. Record with the clock burned into every frame, review footage with sync tools, mark finishers, and export results — all from your phone.
 
-- **Start/Stop Clock** and **Record** are independent. Start the clock when
-  the gun goes off; it keeps running the whole time regardless of what the
-  recording is doing.
-- **Pause** (the II button next to the record button) pauses the *recording*
-  only — skip the boring far side of the track, resume when runners come back
-  into view. The clock never stops or resets when you do this.
-- The time is burned directly into the video frames, so anyone who gets the
-  file later can pause playback and read the exact time, no separate app or
-  sync step needed.
-- Recordings save as `.webm`, which Google Drive plays natively — just upload
-  and share, no conversion needed.
+**[▶ Open the app](https://joeypxc.github.io/stopwatchvideo/)**
 
-## Deploying to GitHub Pages (one-time setup)
+---
 
-1. Create a new **public** GitHub repository (e.g. `timing-cam`).
-2. Upload all the files in this folder to the repo, keeping the folder
-   structure exactly as-is (`index.html`, `manifest.json`, `sw.js`, and the
-   `icons/` folder with both PNGs inside it).
-   - Easiest way: on the repo page, click **Add file → Upload files**, drag
-     everything in (including the `icons` folder), and commit.
-3. In the repo, go to **Settings → Pages**.
-4. Under "Build and deployment", set **Source** to `Deploy from a branch`,
-   branch `main`, folder `/ (root)`. Save.
-5. Wait a minute or two, then GitHub will show you a live URL, something like:
-   `https://yourusername.github.io/timing-cam/`
+## Features
 
-That URL is HTTPS by default, which is required for camera access to work.
+### Recording
+- **Independent clock and recording** — start the clock when the gun goes off; it keeps running regardless of what the recording is doing
+- **Pause recording** (❚❚ button) to skip the far side of the track and resume when runners come back into view — the clock never stops
+- **Stopwatch burned into every frame** — anyone who gets the file can pause playback and read the exact time, no separate app or sync needed
+- **Lap button** — marks a split reference point on the clock
+- **Pinch to zoom** the camera while recording
+- **Flip camera** between front and rear
+- **Wake lock** keeps the screen on during recording
+- **Haptic feedback** on key actions
+- **Clock persists** across sessions — if you close the app mid-race it remembers where the clock was
 
-## Installing it as an app on your phone
+### Review & Results
+- **Upload an external video** for post-race review — load any video file and sync the clock to it
+- **Gun flash sync** — tap "Set Gun Flash (0.00)" on the exact frame the gun fires to auto-sync the clock to that video
+- **Manual sync** — set the clock offset manually if the gun flash isn't visible
+- **Mark finishers** while scrubbing through the video — tap to log each finish time with the calculated race time
+- **Editable results table** — add notes to each finisher, delete entries, reorder as needed
+- **Export to CSV** — download your finisher list with times and notes
 
-1. Open the GitHub Pages URL above in **Chrome** on Android.
-2. Chrome should show an **Install app** banner automatically, or tap the
-   **⋮** menu → **Add to Home screen** / **Install app**.
-3. It'll now sit on your home screen with its own icon and open full-screen
-   like a normal app, no browser bar.
+### Sharing
+- **Share Video** — burns the clock back onto an uploaded video at native frame rate and shares via the Android share sheet or downloads as `.webm`
+- Recordings save as `.webm` which Google Drive plays natively — upload and share with no conversion needed
 
-## Updating it later
+---
 
-Just edit the files in the GitHub repo (or re-upload changed ones) and commit.
-GitHub Pages redeploys automatically within a minute or two. Anyone with the
-app installed will get the update next time they open it with a signal.
+## Installing on your phone
 
-## Known limitations (first version)
+1. Open **[the app](https://joeypxc.github.io/stopwatchvideo/)** in **Chrome on Android**
+2. Tap **⋮ → Add to Home Screen / Install app** (or accept the install banner)
+3. Grant camera and microphone permissions when prompted
 
-- Frame rate/resolution depends on what the phone's camera + browser exposes
-  — typically solid 1080p/30fps, but not guaranteed high-speed capture.
-- Recordings are `.webm` (VP8), not `.mp4`. Plays fine in Drive, most phones,
-  and most video players, but some older/pickier software may want `.mp4`.
-- No flipping the camera mid-recording (stop first, then flip).
-- This hasn't been tested on a real device yet — try it out and report back
-  anything that feels off and it can be adjusted.
+It'll open full-screen from your home screen like a native app.
+
+---
+
+## Deploying your own copy (optional)
+
+1. Fork this repo or create a new public GitHub repository and upload all files (`index.html`, `manifest.json`, `sw.js`, and the `icons/` folder)
+2. Go to **Settings → Pages**, set Source to `Deploy from a branch`, branch `main`, folder `/ (root)`. Save.
+3. GitHub will give you a live HTTPS URL within a minute or two — HTTPS is required for camera access to work
+
+---
+
+## Known limitations
+
+- Frame rate and resolution depend on your phone's camera and browser — typically solid 1080p/30fps
+- Recordings are `.webm` (VP8), not `.mp4`. Plays fine in Google Drive, most phones, and most modern video players. Some older software may need conversion to `.mp4`
+- No switching cameras mid-recording — stop first, then flip
