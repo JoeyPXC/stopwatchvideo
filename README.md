@@ -58,3 +58,9 @@ It'll open full-screen from your home screen like a native app.
 - Frame rate and resolution depend on your phone's camera and browser — typically solid 1080p/30fps
 - Recordings are `.webm` (VP8), not `.mp4`. Plays fine in Google Drive, most phones, and most modern video players. Some older software may need conversion to `.mp4`
 - No switching cameras mid-recording — stop first, then flip
+
+---
+
+## Support
+
+If this saves you time and helps your coaching and you'd like to donate (you certainly don't have to) my Venmo is **@JoeyPXC**
