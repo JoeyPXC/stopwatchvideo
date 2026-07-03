@@ -452,10 +452,13 @@
   </div>
 </div>
 
+<div style="position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden;pointer-events:none;" aria-hidden="true">
+  <video id="resultVideo" playsinline preload="auto"></video>
+</div>
+
 <div id="resultOverlay">
   <div id="resultLeft">
     <div id="resultDisplayContainer">
-      <video id="resultVideo" playsinline preload="auto" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;visibility:hidden;"></video>
       <canvas id="resultCanvas"></canvas>
       <div id="scrubIndicator"></div>
     </div>
@@ -640,7 +643,8 @@
       limiter.release.setValueAtTime(0.2, audioCtx.currentTime);
       const dest = audioCtx.createMediaStreamDestination();
       source.connect(limiter).connect(dest);
-      audioCtx.resume().catch(() => {});
+      // Short delay before resuming prevents the compressor startup crackle
+      setTimeout(() => audioCtx.resume().catch(() => {}), 300);
       return dest.stream.getAudioTracks()[0] || rawTrack;
     } catch (e) { return rawTrack; }
   }
