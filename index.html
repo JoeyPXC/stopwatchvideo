@@ -1,6 +1,7 @@
 
 
 
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -852,7 +853,11 @@
       
       const txt = formatClock(currentClockMs());
       ctx.strokeText(txt, fSize * 0.5, canvas.height - fSize * 0.5);
-      ctx.fillStyle = clockRunning ? '#f4f1ea' : '#c9a227';
+      // Always off-white regardless of clock state. The gold colour when
+      // paused looked fine on the live preview but got baked into the
+      // recording — the review overlay then drew white text on top of the
+      // gold pixels, producing the visible "ghost" behind the white timer.
+      ctx.fillStyle = '#f4f1ea';
       ctx.fillText(txt, fSize * 0.5, canvas.height - fSize * 0.5);
 
       if (lapUsed) {
