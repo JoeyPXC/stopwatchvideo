@@ -1,10 +1,10 @@
 # Stopwatch Video
 
-A camera PWA with a burned-in stopwatch overlay for filming races at meets. Record with the clock burned into every frame, review footage with sync tools, mark finishers, and export results — all from your phone.
+A camera PWA with a burned-in stopwatch overlay for filming races at meets. Record with the clock burned into every frame, review footage with sync tools, mark finishers, and export results all from your phone.
 
 **[▶ Open the app](https://joeypxc.github.io/stopwatchvideo/)**
 
-Back in 2012, at an away dual meet with no official timing, I held my stopwatch up in front of my phone's camera while filming the 1600m finish so I'd have my athletes' times on video afterward — there was no way to split them all individually. I've wanted a proper solution to that problem ever since. Over a decade later, nothing on Android came close to what I actually needed at a meet, so I built it.
+Back in 2012, at an away dual meet with no official timing, I held my stopwatch up in front of my phone's camera while filming the 1600m finish so I'd have my athletes' times on video afterward since there was no way to split them all individually. I've wanted a proper solution to that problem ever since. Over a decade later, nothing on Android came close to what I actually needed at a meet, so I built it.
 
 ---
 
@@ -59,8 +59,5 @@ It'll open full-screen from your home screen like a native app.
 - Recordings are `.webm` (VP8), not `.mp4`. Plays fine in Google Drive, most phones, and most modern video players. Some older software may need conversion to `.mp4`
 - No switching cameras mid-recording — stop first, then flip
 
----
 
-## Support
 
-If this saves you time and helps your coaching and you'd like to donate (you certainly don't have to) my Venmo is **@JoeyPXC**
