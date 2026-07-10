@@ -2,6 +2,7 @@
 
 
 
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -610,6 +611,130 @@
     } catch(e) {}
   }
   
+  // --- MP4 duration fix ---
+  // Android Chrome's MediaRecorder writes fragmented MP4 with every duration
+  // field zeroed and no mehd box, so the file reports ~1s and won't scrub.
+  // This patches mvhd/tkhd/mdhd durations and inserts a mehd box. Healthy
+  // files (nonzero mvhd duration, e.g. iOS Safari output) pass through
+  // untouched so accurate headers are never overwritten.
+  function fixMp4DurationBytes(bytes, durationMs) {
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const type = (off) => String.fromCharCode(bytes[off], bytes[off + 1], bytes[off + 2], bytes[off + 3]);
+
+    function eachBox(start, end, cb) {
+      let off = start;
+      while (off + 8 <= end) {
+        let size = dv.getUint32(off);
+        const t = type(off + 4);
+        let hdr = 8;
+        if (size === 1) { size = Number(dv.getBigUint64(off + 8)); hdr = 16; }
+        else if (size === 0) { size = end - off; }
+        if (size < hdr || off + size > end) return;
+        if (cb(off, size, hdr, t) === false) return;
+        off += size;
+      }
+    }
+    function findBox(start, end, want) {
+      let found = null;
+      eachBox(start, end, (off, size, hdr, t) => {
+        if (t === want) { found = { off, size, hdr }; return false; }
+      });
+      return found;
+    }
+
+    const moov = findBox(0, bytes.length, 'moov');
+    if (!moov) return bytes;
+    const moovEnd = moov.off + moov.size;
+
+    let movieTimescale = 1000;
+    const mvhd = findBox(moov.off + moov.hdr, moovEnd, 'mvhd');
+    if (mvhd) {
+      const v = bytes[mvhd.off + 8];
+      const existing = (v === 1) ? Number(dv.getBigUint64(mvhd.off + 32)) : dv.getUint32(mvhd.off + 24);
+      if (existing > 0) return bytes; // healthy file — leave it alone
+      if (v === 1) {
+        movieTimescale = dv.getUint32(mvhd.off + 28);
+        dv.setBigUint64(mvhd.off + 32, BigInt(Math.round(durationMs / 1000 * movieTimescale)));
+      } else {
+        movieTimescale = dv.getUint32(mvhd.off + 20);
+        dv.setUint32(mvhd.off + 24, Math.round(durationMs / 1000 * movieTimescale));
+      }
+    }
+    const movieDur = Math.round(durationMs / 1000 * movieTimescale);
+
+    eachBox(moov.off + moov.hdr, moovEnd, (tOff, tSize, tHdr, t) => {
+      if (t !== 'trak') return;
+      const tkhd = findBox(tOff + tHdr, tOff + tSize, 'tkhd');
+      if (tkhd) {
+        const v = bytes[tkhd.off + 8];
+        if (v === 1) dv.setBigUint64(tkhd.off + 36, BigInt(movieDur));
+        else dv.setUint32(tkhd.off + 28, movieDur);
+      }
+      const mdia = findBox(tOff + tHdr, tOff + tSize, 'mdia');
+      if (mdia) {
+        const mdhd = findBox(mdia.off + mdia.hdr, mdia.off + mdia.size, 'mdhd');
+        if (mdhd) {
+          const v = bytes[mdhd.off + 8];
+          if (v === 1) {
+            const ts = dv.getUint32(mdhd.off + 28);
+            dv.setBigUint64(mdhd.off + 32, BigInt(Math.round(durationMs / 1000 * ts)));
+          } else {
+            const ts = dv.getUint32(mdhd.off + 20);
+            dv.setUint32(mdhd.off + 24, Math.round(durationMs / 1000 * ts));
+          }
+        }
+      }
+    });
+
+    const mvex = findBox(moov.off + moov.hdr, moovEnd, 'mvex');
+    if (!mvex) return bytes;
+    const mehd = findBox(mvex.off + mvex.hdr, mvex.off + mvex.size, 'mehd');
+    if (mehd) {
+      const v = bytes[mehd.off + 8];
+      if (v === 1) dv.setBigUint64(mehd.off + 12, BigInt(movieDur));
+      else dv.setUint32(mehd.off + 12, movieDur);
+      return bytes;
+    }
+
+    // Insert a 16-byte mehd v0 after the mvex header; grow mvex + moov sizes.
+    const mehdBox = new Uint8Array(16);
+    const mdv = new DataView(mehdBox.buffer);
+    mdv.setUint32(0, 16);
+    mehdBox[4] = 0x6d; mehdBox[5] = 0x65; mehdBox[6] = 0x68; mehdBox[7] = 0x64; // 'mehd'
+    mdv.setUint32(8, 0);
+    mdv.setUint32(12, movieDur);
+    dv.setUint32(moov.off, moov.size + 16);
+    dv.setUint32(mvex.off, mvex.size + 16);
+    const insertAt = mvex.off + mvex.hdr;
+    const out = new Uint8Array(bytes.length + 16);
+    out.set(bytes.subarray(0, insertAt), 0);
+    out.set(mehdBox, insertAt);
+    out.set(bytes.subarray(insertAt), insertAt + 16);
+    return out;
+  }
+
+  // Async wrapper: takes a Blob, returns a Promise<Blob> with duration fixed.
+  // Never rejects — falls back to the original blob on any failure.
+  function fixMp4Duration(blob, durationMs) {
+    if (!durationMs || durationMs <= 0) return Promise.resolve(blob);
+    return blob.arrayBuffer()
+      .then(ab => {
+        const fixed = fixMp4DurationBytes(new Uint8Array(ab), durationMs);
+        return new Blob([fixed], { type: blob.type });
+      })
+      .catch(() => blob);
+  }
+
+  // Routes a finished recording blob through the right duration fixer for
+  // its container. Returns a Promise<Blob>; never rejects.
+  function fixRecordingDuration(blob, ext, durationMs) {
+    if (ext === 'webm' && window.ysFixWebmDuration && durationMs > 0) {
+      return window.ysFixWebmDuration(blob, durationMs, { logger: false }).catch(() => blob);
+    }
+    if (ext === 'mp4') return fixMp4Duration(blob, durationMs);
+    return Promise.resolve(blob);
+  }
+
   let recorder = null;
   let recordingState = 'idle'; 
   let recordedChunks = [];
@@ -621,8 +746,82 @@
   let videoTimelineMap = [];
   let finishersList = [];
   let isImportedVideoMode = false;
-  let isVideoSynced = false; // Tracks if user has set standard or custom alignment reference
+  let isVideoSynced = false;
   let currentSyncLabelString = "0.00";
+
+  // --- IndexedDB auto-save for crash recovery ---
+  const IDB_NAME = 'svp_recording';
+  const IDB_STORE = 'chunks';
+  let idb = null;
+
+  function openIDB() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(IDB_NAME, 1);
+      req.onupgradeneeded = e => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains(IDB_STORE)) {
+          db.createObjectStore(IDB_STORE, { keyPath: 'idx' });
+        }
+        if (!db.objectStoreNames.contains('meta')) {
+          db.createObjectStore('meta', { keyPath: 'key' });
+        }
+      };
+      req.onsuccess = e => { idb = e.target.result; resolve(idb); };
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  function idbSaveChunk(idx, data) {
+    if (!idb) return;
+    const tx = idb.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).put({ idx, data });
+  }
+
+  function idbSaveMeta(meta) {
+    if (!idb) return;
+    const tx = idb.transaction('meta', 'readwrite');
+    tx.objectStore('meta').put({ key: 'recording', ...meta });
+  }
+
+  function idbClear() {
+    if (!idb) return;
+    const tx = idb.transaction([IDB_STORE, 'meta'], 'readwrite');
+    tx.objectStore(IDB_STORE).clear();
+    tx.objectStore('meta').clear();
+  }
+
+  function idbGetAll() {
+    return new Promise((resolve) => {
+      if (!idb) return resolve(null);
+      const tx = idb.transaction([IDB_STORE, 'meta'], 'readonly');
+      const chunkReq = tx.objectStore(IDB_STORE).getAll();
+      const metaReq = tx.objectStore('meta').get('recording');
+      let chunks = null, meta = null;
+      chunkReq.onsuccess = () => { chunks = chunkReq.result; tryResolve(); };
+      metaReq.onsuccess = () => { meta = metaReq.result; tryResolve(); };
+      chunkReq.onerror = metaReq.onerror = () => resolve(null);
+      function tryResolve() {
+        if (chunks !== null && meta !== null) resolve({ chunks, meta });
+      }
+    });
+  }
+
+  // Check for a crashed recording on startup
+  openIDB().then(() => idbGetAll()).then(saved => {
+    if (!saved || saved.chunks.length === 0) return;
+    const meta = saved.meta;
+    const sorted = saved.chunks.sort((a, b) => a.idx - b.idx).map(c => c.data);
+    const blob = new Blob(sorted, { type: meta.blobType || 'video/webm' });
+    if (blob.size < 10000) { idbClear(); return; } // too small, ignore
+    const mins = Math.round((Date.now() - (meta.savedAt || Date.now())) / 60000);
+    const msg = `A recording from ${mins < 2 ? 'just now' : mins + ' minutes ago'} was recovered (${(blob.size/1024/1024).toFixed(1)}MB). Would you like to save it?`;
+    if (confirm(msg)) {
+      const filename = `recovered-race-${Date.now()}.${meta.ext || 'webm'}`;
+      fixRecordingDuration(blob, meta.ext || 'webm', meta.durationMs || 0)
+        .then(fixed => triggerDownload(fixed, filename));
+    }
+    idbClear();
+  }).catch(() => {});
   let reviewLoopId = null;
   let drawLoopActive = true;
 
@@ -1029,8 +1228,16 @@
     if (REC_FORMAT.mime) recOpts.mimeType = REC_FORMAT.mime;
     recorder = new MediaRecorder(combined, recOpts);
     recordedChunks = [];
-    recorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+    let chunkIdx = 0;
+    recorder.ondataavailable = e => {
+      if (e.data.size > 0) {
+        recordedChunks.push(e.data);
+        idbSaveChunk(chunkIdx++, e.data);
+        idbSaveMeta({ blobType: REC_FORMAT.blobType, ext: REC_FORMAT.ext, savedAt: Date.now(), durationMs: currentActiveDurationMs() });
+      }
+    };
     recorder.onstop = () => {
+      idbClear(); // Clean finish — no need for recovery data
       const b = new Blob(recordedChunks, { type: REC_FORMAT.blobType });
       const process = (blob) => {
         if (lastBlobUrl) URL.revokeObjectURL(lastBlobUrl);
@@ -1053,11 +1260,10 @@
         };
         resultVideo.load();
       };
-      // The duration fixer only understands WebM container data — skip it
-      // entirely for MP4 recordings (iOS), whose duration is already correct.
-      if (REC_FORMAT.ext === 'webm' && window.ysFixWebmDuration && lastRecordingDurationMs > 0) {
-        window.ysFixWebmDuration(b, lastRecordingDurationMs, { logger: false }).then(process).catch(()=>process(b));
-      } else { process(b); }
+      // Route through the container-appropriate duration fixer. WebM gets
+      // ysFixWebmDuration; MP4 gets the mvhd/mehd patcher (Android Chrome
+      // writes zeroed durations); healthy files pass through untouched.
+      fixRecordingDuration(b, REC_FORMAT.ext, lastRecordingDurationMs).then(process);
     };
     recorder.start(1000); recordingActiveMs = 0; activeSegmentStart = performance.now(); recordingState = 'recording';
     videoTimelineMap = [{ videoStart: 0, raceStart: currentClockMs() }];
@@ -1369,23 +1575,26 @@
     return { burnRecorder, chunks };
   }
 
-  function finishBurn(chunks) {
-    const finalBlob = new Blob(chunks, { type: REC_FORMAT.blobType });
+  function finishBurn(chunks, durationMs) {
+    const rawBlob = new Blob(chunks, { type: REC_FORMAT.blobType });
     const filename = `race-${Date.now()}.${REC_FORMAT.ext}`;
 
-    // Try Web Share API first (Android/iOS native share sheet)
-    if (navigator.canShare && navigator.canShare({ files: [new File([finalBlob], filename, { type: REC_FORMAT.blobType })] })) {
-      const file = new File([finalBlob], filename, { type: REC_FORMAT.blobType });
-      navigator.share({ files: [file], title: 'Race Video' }).catch(() => {
-        // User cancelled or share failed — fall back to download
-        triggerDownload(finalBlob, filename);
-      });
-    } else {
-      triggerDownload(finalBlob, filename);
-    }
+    const shareOrDownload = (blob) => {
+      burnSmoothBtn.textContent = 'Share Video';
+      burnSmoothBtn.disabled = false;
+      if (navigator.canShare && navigator.canShare({ files: [new File([blob], filename, { type: REC_FORMAT.blobType })] })) {
+        const file = new File([blob], filename, { type: REC_FORMAT.blobType });
+        navigator.share({ files: [file], title: 'Race Video' }).catch(() => triggerDownload(blob, filename));
+      } else {
+        triggerDownload(blob, filename);
+      }
+    };
 
-    burnSmoothBtn.textContent = 'Share Video';
-    burnSmoothBtn.disabled = false;
+    // Prefer the wall-clock recording span; if it's unusable, fall back to
+    // the source video's own duration (exact, since the burn plays at 1x).
+    let dur = durationMs;
+    if (!(dur > 0) && isFinite(resultVideo.duration)) dur = resultVideo.duration * 1000;
+    fixRecordingDuration(rawBlob, REC_FORMAT.ext, dur).then(shareOrDownload);
   }
 
   function triggerDownload(blob, filename) {
@@ -1407,10 +1616,10 @@
     getBurnFps().then(fps => {
       const { burnRecorder, chunks } = startBurnRecorder(fps);
       burnRecorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
-      burnRecorder.onstop = () => finishBurn(chunks);
+      let burnStartTime = 0;
+      burnRecorder.onstop = () => finishBurn(chunks, Date.now() - burnStartTime);
 
       let smoothLoopId = null;
-      let started = false;
 
       const smoothLoop = () => {
         if (resultVideo.ended) {
@@ -1423,8 +1632,8 @@
         smoothLoopId = requestAnimationFrame(smoothLoop);
       };
 
-      // Wait for play to actually start before kicking off the recorder
       const startWhenPlaying = () => {
+        burnStartTime = Date.now();
         burnRecorder.start();
         smoothLoopId = requestAnimationFrame(smoothLoop);
       };
@@ -1432,7 +1641,7 @@
       if (playPromise) {
         playPromise.then(startWhenPlaying).catch(err => {
           console.error('Playback failed:', err);
-          burnSmoothBtn.textContent = 'Save Video';
+          burnSmoothBtn.textContent = 'Share Video';
           burnSmoothBtn.disabled = false;
         });
       } else {
