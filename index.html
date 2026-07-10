@@ -1,8 +1,3 @@
-
-
-
-
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1182,9 +1177,10 @@
     if (resultVideo.readyState >= 1) {
       rCtx.drawImage(resultVideo, 0, 0, resultCanvas.width, resultCanvas.height);
       
-      // Only draw the clock overlay when reviewing an external unsynced video.
-      // If reviewing your own recorded footage the clock is already burned in.
-      if (isVideoSynced) {
+      // Only draw the clock overlay for uploaded external videos, which have
+      // no baked-in clock. Camera recordings already have the clock burned
+      // into the pixels — drawing again here produced a misaligned double.
+      if (isImportedVideoMode) {
         const fSize = Math.round(resultCanvas.width * 0.045);
         rCtx.font = `700 ${fSize}px ui-monospace, monospace`;
         rCtx.lineJoin = 'round'; rCtx.lineWidth = fSize * 0.15; rCtx.strokeStyle = 'rgba(0,0,0,0.8)';
