@@ -734,6 +734,7 @@
   let recordingState = 'idle'; 
   let recordedChunks = [];
   let lastBlobUrl = null;
+  let lastBlobObj = null;
   let recordingActiveMs = 0;      
   let activeSegmentStart = 0;     
   let lastRecordingDurationMs = 0;
@@ -1237,6 +1238,7 @@
       const b = new Blob(recordedChunks, { type: REC_FORMAT.blobType });
       const process = (blob) => {
         if (lastBlobUrl) URL.revokeObjectURL(lastBlobUrl);
+        lastBlobObj = blob;
         lastBlobUrl = URL.createObjectURL(blob); 
         resultVideo.src = lastBlobUrl;
         
@@ -1593,7 +1595,25 @@
     fixRecordingDuration(rawBlob, REC_FORMAT.ext, dur).then(shareOrDownload);
   }
 
-  function triggerDownload(blob, filename) {
+  async function triggerDownload(blob, filename) {
+    // Real save dialog where supported (desktop Chrome/Edge, newer Android
+    // Chrome). Cancelling saves nothing — no more accidental duplicate copies.
+    if (window.showSaveFilePicker) {
+      try {
+        const ext = '.' + filename.split('.').pop();
+        const handle = await window.showSaveFilePicker({
+          suggestedName: filename,
+          types: [{ description: 'Video', accept: { [blob.type || 'video/mp4']: [ext] } }]
+        });
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        return;
+      } catch (e) {
+        if (e && e.name === 'AbortError') return; // user cancelled — do nothing
+        // Other failures (e.g. no user gesture) fall through to instant download
+      }
+    }
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = filename;
@@ -1666,7 +1686,9 @@
       }
     }
   };
-  downloadBtn.onclick = () => { const a=document.createElement('a'); a.href=lastBlobUrl; a.download=`race-${Date.now()}.${REC_FORMAT.ext}`; a.click(); };
+  downloadBtn.onclick = () => {
+    if (lastBlobObj) triggerDownload(lastBlobObj, `race-${Date.now()}.${REC_FORMAT.ext}`);
+  };
   // PWA service worker — enables install + full offline use. This app has
   // no data dependencies (camera only), so once cached it works with zero
   // signal — which is exactly the situation at most starting lines.
